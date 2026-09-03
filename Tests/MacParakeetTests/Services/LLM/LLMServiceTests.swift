@@ -522,6 +522,7 @@ final class LLMServiceTests: XCTestCase {
     }
 
     func testPromptResultDetailedAppliesAndReturnsEffectiveInferenceSettings() async throws {
+        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
         let requested = PromptInferenceSettings(
             temperature: 0.2,
             topP: 0.8,
@@ -544,6 +545,7 @@ final class LLMServiceTests: XCTestCase {
     }
 
     func testPromptResultDetailedStreamEmitsOneTerminalReceipt() async throws {
+        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
         mockClient.streamTokens = ["one", " two"]
         mockClient.responseModel = "gpt-4.1"
         mockClient.responseFinishReason = "stop"
