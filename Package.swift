@@ -78,6 +78,20 @@ let discoverTestExcludes = disableDiscover ? [
     "Services/Discover",
 ] : []
 
+let appTargetSwiftSettings: [SwiftSetting] = mlxLocalLLMSwiftSettings + discoverSwiftSettings
+let coreTargetExcludes: [String] = [
+    "Audio/README.md",
+    "Database/README.md",
+    "Licensing/README.md",
+    "Resources",
+    "Services/System/README.md",
+    "STT/README.md",
+    "TextProcessing/README.md",
+] + discoverCoreExcludes
+let coreTargetSwiftSettings: [SwiftSetting] = whisperKitSwiftSettings + discoverSwiftSettings
+let testTargetSwiftSettings: [SwiftSetting] =
+    whisperKitSwiftSettings + mlxLocalLLMSwiftSettings + discoverSwiftSettings
+
 let appDependencies: [Target.Dependency] = [
     "MacParakeetCore",
     "MacParakeetViewModels",
@@ -132,7 +146,7 @@ let package = Package(
             path: "Sources/MacParakeet",
             exclude: discoverAppExcludes,
             resources: [.process("Resources")],
-            swiftSettings: mlxLocalLLMSwiftSettings + discoverSwiftSettings
+            swiftSettings: appTargetSwiftSettings
         ),
         // macparakeet-cli — versioned public surface (semver, Sources/CLI/CHANGELOG.md).
         // Consumed by the macOS app, scripted callers, and downstream agent skills
@@ -160,16 +174,8 @@ let package = Package(
             name: "MacParakeetCore",
             dependencies: coreDependencies,
             path: "Sources/MacParakeetCore",
-            exclude: [
-                "Audio/README.md",
-                "Database/README.md",
-                "Licensing/README.md",
-                "Resources",
-                "Services/System/README.md",
-                "STT/README.md",
-                "TextProcessing/README.md",
-            ] + discoverCoreExcludes,
-            swiftSettings: whisperKitSwiftSettings + discoverSwiftSettings
+            exclude: coreTargetExcludes,
+            swiftSettings: coreTargetSwiftSettings
         ),
         // ViewModels library (testable, depends on Core + AppKit/SwiftUI)
         .target(
@@ -185,7 +191,7 @@ let package = Package(
             dependencies: appTestDependencies,
             path: "Tests/MacParakeetTests",
             exclude: discoverTestExcludes,
-            swiftSettings: whisperKitSwiftSettings + mlxLocalLLMSwiftSettings + discoverSwiftSettings
+            swiftSettings: testTargetSwiftSettings
         ),
         .testTarget(
             name: "CLITests",
