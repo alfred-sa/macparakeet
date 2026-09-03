@@ -115,7 +115,7 @@ final class LLMHTTPAdapterTests: XCTestCase {
         }
 
         let providerConfig = LLMProviderConfig.openaiCompatible(
-            model: "qwen3.8-flash-next",
+            model: "local-model",
             baseURL: URL(string: "http://localhost:8080/v1")!
         )
         let resolution = PromptInferenceCapabilityResolver.resolve(
@@ -139,14 +139,14 @@ final class LLMHTTPAdapterTests: XCTestCase {
         try assertJSONBody(
             try XCTUnwrap(capturedRequest),
             equals: """
-            {"chat_template_kwargs":{"enable_thinking":false},"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.8-flash-next","seed":42,"stream":false,"temperature":0.2,"top_k":20,"top_p":0.9}
+            {"chat_template_kwargs":{"enable_thinking":false},"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"local-model","seed":42,"stream":false,"temperature":0.2,"top_k":20,"top_p":0.9}
             """
         )
     }
 
-    func testCustomOpenAICompatibleQwenThinkingKwargsAreExplicitOnly() throws {
+    func testCustomOpenAICompatibleThinkingKwargsAreExplicitOnly() throws {
         let config = LLMProviderConfig.openaiCompatible(
-            model: "qwen3.8-flash-next",
+            model: "local-model",
             baseURL: URL(string: "http://localhost:8080/v1")!
         )
 
