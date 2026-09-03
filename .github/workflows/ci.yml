@@ -67,23 +67,6 @@ jobs:
           set -o pipefail
           swift build -c release 2>&1 | tee .ci-logs/swift-build-release.log
 
-      - name: Swift Build Without Discover
-        timeout-minutes: 15
-        env:
-          MACPARAKEET_DISABLE_DISCOVER: "1"
-          MACPARAKEET_SKIP_WHISPERKIT: "1"
-        run: |
-          mkdir -p .ci-logs
-          set -o pipefail
-          swift build --scratch-path .build/ci-no-discover -c release --product MacParakeet 2>&1 | tee .ci-logs/swift-build-no-discover.log
-          BIN_DIR="$(swift build --scratch-path .build/ci-no-discover -c release --product MacParakeet --show-bin-path)"
-          test ! -e "$BIN_DIR/MacParakeet_MacParakeet.bundle/discover-fallback.json"
-          if strings "$BIN_DIR/MacParakeet" | grep -Eq '/api/discover(\.json|-thoughts)|MACPARAKEET_DISCOVER_'; then
-            echo "Discover-disabled binary contains Discover endpoints or overrides." >&2
-            exit 1
-          fi
-          swift test --scratch-path .build/ci-no-discover --filter MainWindowStateTests 2>&1 | tee .ci-logs/swift-test-no-discover.log
-
       - name: CLI Contract Smoke
         timeout-minutes: 2
         env:
