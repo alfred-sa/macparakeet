@@ -82,6 +82,10 @@ Current `main` feature gates in `Sources/MacParakeetCore/AppFeatures.swift`:
 | `aiFormatterProfilesEnabled` | `false` | App-aware AI Formatter profiles are code-complete but held out of the current tagged release train |
 | `inProcessLocalLLMEnabled` | `false` | In-process local LLM (MLX) foundation seam, verified model downloader, and one-click Settings card are compiled and tested, but provider lists hide the option unless the developer override (`MacParakeetEnableInProcessLocalLLM` default or `--enable-local-ai`) is active; the real MLX runtime links only in opt-in `MACPARAKEET_ENABLE_MLX_LOCAL_LLM=1` app builds |
 
+Discover is included in normal builds. `MACPARAKEET_DISABLE_DISCOVER=1` is a
+manifest-level local build option that excludes the Discover sources, fallback
+feed, UI wiring, cache path, and network endpoints; it is not a runtime setting.
+
 ## Architecture Decision Records (ADRs)
 
 All ADRs live in `spec/adr/`. These are locked -- they record decisions already made.
