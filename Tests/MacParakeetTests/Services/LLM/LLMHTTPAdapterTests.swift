@@ -92,7 +92,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                 topP: 0.8,
                 topK: 20,
                 maxTokens: 123,
-                seed: 42,
                 thinkingMode: .disabled
             )
         )
@@ -125,7 +124,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                 topP: 0.9,
                 topK: 20,
                 maxTokens: 4096,
-                seed: 42,
                 thinkingMode: .enabled,
                 reasoningEffort: .medium
             )
@@ -140,7 +138,7 @@ final class LLMHTTPAdapterTests: XCTestCase {
         try assertJSONBody(
             try XCTUnwrap(capturedRequest),
             equals: """
-                {"chat_template_kwargs":{"enable_thinking":true,"reasoning_effort":"medium"},"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"local-model","seed":42,"stream":false,"temperature":0.2,"top_k":20,"top_p":0.9}
+                {"chat_template_kwargs":{"enable_thinking":true,"reasoning_effort":"medium"},"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"local-model","stream":false,"temperature":0.2,"top_k":20,"top_p":0.9}
                 """
         )
     }
@@ -235,7 +233,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                 topP: 0.9,
                 topK: 20,
                 maxTokens: 4096,
-                seed: 42,
                 thinkingMode: .disabled
             )
         )
@@ -379,7 +376,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                 topP: 0.9,
                 topK: 20,
                 maxTokens: 4096,
-                seed: 42,
                 thinkingMode: .disabled
             )
         )
@@ -553,7 +549,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                 topP: 0.8,
                 topK: 20,
                 maxTokens: 123,
-                seed: 42,
                 thinkingMode: .enabled
             )
         )
@@ -585,7 +580,6 @@ final class LLMHTTPAdapterTests: XCTestCase {
                     topP: 0.9,
                     topK: 20,
                     maxTokens: 4096,
-                    seed: 42,
                     thinkingMode: .enabled
                 )
             ).options
@@ -594,7 +588,7 @@ final class LLMHTTPAdapterTests: XCTestCase {
         try assertJSONBody(
             try XCTUnwrap(capturedRequest),
             equals: """
-                {"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5:4b","options":{"num_ctx":8192,"num_predict":4096,"seed":42,"temperature":0.2,"top_k":20,"top_p":0.9},"stream":false,"think":true}
+                {"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5:4b","options":{"num_ctx":8192,"num_predict":4096,"temperature":0.2,"top_k":20,"top_p":0.9},"stream":false,"think":true}
                 """
         )
     }

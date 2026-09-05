@@ -526,8 +526,7 @@ final class LLMServiceTests: XCTestCase {
         let requested = PromptInferenceSettings(
             temperature: 0.2,
             topP: 0.8,
-            maxTokens: 512,
-            seed: 7
+            maxTokens: 512
         )
 
         let result = try await service.generatePromptResultDetailed(
@@ -539,7 +538,6 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(result.effectiveSettings?.temperature, 0.2)
         XCTAssertEqual(result.effectiveSettings?.topP, 0.8)
         XCTAssertEqual(result.effectiveSettings?.maxTokens, 512)
-        XCTAssertNil(result.effectiveSettings?.seed)
         XCTAssertTrue(try XCTUnwrap(mockClient.capturedOptions).usesPromptInferenceSettings)
         XCTAssertEqual(mockClient.capturedOptions?.effectiveInferenceSettings, result.effectiveSettings)
     }
