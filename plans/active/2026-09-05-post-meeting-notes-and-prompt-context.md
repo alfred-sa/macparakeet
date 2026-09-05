@@ -5,7 +5,8 @@
 > implemented and locally verified on 2026-09-05. Real-app QA passed the visual
 > rendering paths but found the table-selection and table-action-label gaps
 > recorded below. Those gaps and a release-bundle size comparison remain before
-> PR/release.
+> PR/release. Saved notes now live in their own detail tab, separate from the
+> transcript.
 > **Priority:** P2
 > **Date:** 2026-09-05
 > **Issues:** [#889](https://github.com/moona3k/macparakeet/issues/889),
@@ -135,6 +136,9 @@ custom prompt.
 12. **No content telemetry.** Notes and prompt bodies never enter logs or
     telemetry. Existing bounded lengths, status, provider, and timing metadata
     remain allowed.
+13. **Notes and transcript are separate surfaces.** A saved meeting orders its
+    tabs as `Transcript`, `Notes`, generated results, then `Chat`. The Notes tab
+    is always present for meetings and never appears for other source types.
 
 ## Target Data Model
 
@@ -196,8 +200,10 @@ transcription row. Retranscription continues preserving `userNotes` as today.
 
 ### Detail UI
 
-In `TranscriptResultView`, show the notes card for every saved meeting instead
-of conditionally hiding it when notes are absent:
+In `TranscriptResultView`, show a dedicated Notes tab for every saved meeting
+instead of placing the notes card inside the Transcript pane. The tab sits
+immediately after Transcript, before generated results and Chat, and remains
+present even when notes are absent:
 
 - **Empty:** `Your notes`, concise explanatory text, and `Add notes`.
 - **Read:** existing selectable text and Copy, plus Edit.
@@ -209,8 +215,10 @@ validation: an empty transcript is invalid, while empty notes deliberately
 clear the value. Reset all draft/edit/error state when the selected
 transcription changes so a draft cannot cross meeting boundaries.
 
-The card remains above the transcript and visible while post-meeting
-transcription is still processing. Audio retention has no effect on editing.
+The tab remains available while post-meeting transcription is still processing.
+It is absent for file and URL transcriptions. Audio retention has no effect on
+editing. Leaving the tab with a dirty draft uses the existing discard
+confirmation.
 
 ## Per-Prompt Configuration Design
 
@@ -317,7 +325,9 @@ assembly remains unchanged.
 
 - Expose repository update through the protocol.
 - Add the ViewModel save and ordered/latest-wins artifact-refresh boundary.
-- Add empty/read/edit states to the detail card.
+- Add empty/read/edit states to a dedicated detail tab after Transcript.
+- Keep Notes unavailable for non-meeting sources and protect dirty drafts on
+  tab changes.
 - Cover Add, Edit, Clear, Cancel, failure, and meeting-switch behavior.
 
 ### Phase 3 — Prompt configuration
@@ -502,6 +512,8 @@ database under `/tmp` so no real meeting data was changed.
 
 Passed in the real app:
 
+- saved-meeting tab ordering and separation: `Transcript`, `Notes`, generated
+  results, then `Chat`, with no notes content left inside Transcript;
 - saved-meeting notes display and edit/save flow, including a persisted canonical
   note while the existing Prompt Result retained its earlier notes snapshot;
 - completed Prompt Result rendering in light and dark appearances;
