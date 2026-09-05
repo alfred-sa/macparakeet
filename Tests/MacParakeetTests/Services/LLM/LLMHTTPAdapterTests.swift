@@ -87,7 +87,13 @@ final class LLMHTTPAdapterTests: XCTestCase {
         _ = try await openAIAdapter.chatCompletion(
             messages: goldenMessages,
             config: .openai(apiKey: "sk-golden", model: "gpt-5.5"),
-            options: ChatCompletionOptions(temperature: 0.25, maxTokens: 123)
+            options: ChatCompletionOptions(
+                temperature: 0.25,
+                topP: 0.8,
+                topK: 20,
+                maxTokens: 123,
+                thinkingMode: .disabled
+            )
         )
 
         let request = try XCTUnwrap(capturedRequest)
@@ -96,6 +102,146 @@ final class LLMHTTPAdapterTests: XCTestCase {
             """
             {"max_completion_tokens":123,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"gpt-5.5","stream":false}
             """
+        )
+    }
+
+    func testCustomOpenAICompatibleAdapterBuildsAllInferenceSettings() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validOpenAIResponseData())
+        }
+
+        let providerConfig = LLMProviderConfig.openaiCompatible(
+            model: "local-model",
+            baseURL: URL(string: "http://localhost:8080/v1")!
+        )
+        let resolution = PromptInferenceCapabilityResolver.resolve(
+            config: providerConfig,
+            requested: PromptInferenceSettings(
+                temperature: 0.2,
+                topP: 0.9,
+                topK: 20,
+                maxTokens: 4096,
+                thinkingMode: .enabled,
+                reasoningEffort: .medium
+            )
+        )
+
+        _ = try await openAIAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: providerConfig,
+            options: resolution.options
+        )
+
+        try assertJSONBody(
+            try XCTUnwrap(capturedRequest),
+            equals: """
+                {"chat_template_kwargs":{"enable_thinking":true,"reasoning_effort":"medium"},"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"local-model","stream":false,"temperature":0.2,"top_k":20,"top_p":0.9}
+                """
+        )
+    }
+
+    func testCustomOpenAICompatibleThinkingKwargsAreExplicitOnly() throws {
+        let config = LLMProviderConfig.openaiCompatible(
+            model: "local-model",
+            baseURL: URL(string: "http://localhost:8080/v1")!
+        )
+
+        let inherited = PromptInferenceCapabilityResolver.resolve(
+            config: config,
+            requested: nil
+        )
+        let inheritedBody = try jsonBody(
+            from: openAIAdapter.buildRequest(
+                messages: goldenMessages,
+                config: config,
+                options: inherited.options,
+                stream: false
+            ))
+        XCTAssertNil(inheritedBody["chat_template_kwargs"])
+
+        let enabled = PromptInferenceCapabilityResolver.resolve(
+            config: config,
+            requested: PromptInferenceSettings(thinkingMode: .enabled, reasoningEffort: .xhigh)
+        )
+        let enabledBody = try jsonBody(
+            from: openAIAdapter.buildRequest(
+                messages: goldenMessages,
+                config: config,
+                options: enabled.options,
+                stream: false
+            ))
+        XCTAssertEqual(
+            (enabledBody["chat_template_kwargs"] as? [String: Any])?["enable_thinking"] as? Bool,
+            true
+        )
+        XCTAssertEqual(
+            (enabledBody["chat_template_kwargs"] as? [String: Any])?["reasoning_effort"] as? String,
+            "xhigh"
+        )
+
+        let disabled = PromptInferenceCapabilityResolver.resolve(
+            config: config,
+            requested: PromptInferenceSettings(thinkingMode: .disabled)
+        )
+        let disabledBody = try jsonBody(
+            from: openAIAdapter.buildRequest(
+                messages: goldenMessages,
+                config: config,
+                options: disabled.options,
+                stream: false
+            ))
+        XCTAssertEqual(
+            (disabledBody["chat_template_kwargs"] as? [String: Any])?["enable_thinking"] as? Bool,
+            false
+        )
+        XCTAssertNil(
+            (disabledBody["chat_template_kwargs"] as? [String: Any])?["reasoning_effort"]
+        )
+
+        let staleEffortBody = try jsonBody(
+            from: openAIAdapter.buildRequest(
+                messages: goldenMessages,
+                config: config,
+                options: ChatCompletionOptions(
+                    thinkingMode: .disabled,
+                    reasoningEffort: .high,
+                    usesPromptInferenceSettings: true
+                ),
+                stream: false
+            ))
+        XCTAssertNil(
+            (staleEffortBody["chat_template_kwargs"] as? [String: Any])?["reasoning_effort"]
+        )
+    }
+
+    func testNativeOpenAIAdapterOmitsCustomEndpointOnlySettings() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validOpenAIResponseData())
+        }
+
+        _ = try await openAIAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: .openai(apiKey: "sk-golden", model: "gpt-4o"),
+            options: ChatCompletionOptions(
+                temperature: 0.2,
+                topP: 0.9,
+                topK: 20,
+                maxTokens: 4096,
+                thinkingMode: .disabled
+            )
+        )
+
+        try assertJSONBody(
+            try XCTUnwrap(capturedRequest),
+            equals: """
+                {"max_tokens":4096,"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"gpt-4o","stream":false,"temperature":0.2,"top_p":0.9}
+                """
         )
     }
 
@@ -214,6 +360,56 @@ final class LLMHTTPAdapterTests: XCTestCase {
         )
     }
 
+    func testAnthropicAdapterBuildsSupportedInferenceSettingsOnly() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validAnthropicResponseData())
+        }
+
+        _ = try await anthropicAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: .anthropic(apiKey: "sk-ant-golden", model: "claude-sonnet-4-6"),
+            options: ChatCompletionOptions(
+                temperature: 0.2,
+                topP: 0.9,
+                topK: 20,
+                maxTokens: 4096,
+                thinkingMode: .disabled
+            )
+        )
+
+        try assertJSONBody(
+            try XCTUnwrap(capturedRequest),
+            equals: """
+                {"max_tokens":4096,"messages":[{"content":"Hello","role":"user"}],"model":"claude-sonnet-4-6","stream":false,"system":"System","temperature":0.2,"top_p":0.9}
+                """
+        )
+    }
+
+    func testAnthropicAdapterOmitsSamplingForUnknownFutureModel() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validAnthropicResponseData())
+        }
+
+        _ = try await anthropicAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: .anthropic(apiKey: "sk-ant-golden", model: "claude-sonnet-6"),
+            options: ChatCompletionOptions(temperature: 0.2, topP: 0.9, maxTokens: 4096)
+        )
+
+        XCTAssertEqual(
+            try canonicalJSONBody(from: try XCTUnwrap(capturedRequest)),
+            """
+            {"max_tokens":4096,"messages":[{"content":"Hello","role":"user"}],"model":"claude-sonnet-6","stream":false,"system":"System"}
+            """
+        )
+    }
+
     func testOllamaAdapterBuildsGoldenRequest() async throws {
         var capturedRequest: URLRequest?
 
@@ -225,7 +421,7 @@ final class LLMHTTPAdapterTests: XCTestCase {
         _ = try await ollamaAdapter.chatCompletion(
             messages: goldenMessages,
             config: .ollama(model: "qwen3.5:4b"),
-            options: ChatCompletionOptions(temperature: 0.25, maxTokens: 123)
+            options: .default
         )
 
         let request = try XCTUnwrap(capturedRequest)
@@ -239,6 +435,161 @@ final class LLMHTTPAdapterTests: XCTestCase {
             """
             {"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5:4b","options":{"num_ctx":8192},"stream":false,"think":false}
             """
+        )
+    }
+
+    func testOpenAIDetailedStreamEmitsOneTerminalReceipt() async throws {
+        AdapterRequestURLProtocol.handler = { request in
+            let data = Data(
+                """
+                data: {"model":"gpt-4.1","choices":[{"delta":{"content":"Hi"},"finish_reason":null}]}
+
+                data: {"model":"gpt-4.1","choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":1,"total_tokens":4}}
+
+                data: [DONE]
+
+                """.utf8)
+            return (self.okResponse(for: request), data)
+        }
+        let settings = PromptInferenceSettings(temperature: 0.2)
+        let options = ChatCompletionOptions(temperature: 0.2).withInferenceReceipt(
+            usesPromptInferenceSettings: true,
+            effectiveSettings: settings
+        )
+
+        let events = try await collectDetailed(
+            openAIAdapter.chatCompletionDetailedStream(
+                messages: goldenMessages,
+                config: .openai(apiKey: "test", model: "gpt-4.1"),
+                options: options
+            ))
+
+        XCTAssertEqual(events.filter { $0.isTerminal }.count, 1)
+        guard case .completed(let terminal) = events.last else {
+            return XCTFail("Expected terminal event")
+        }
+        XCTAssertEqual(terminal.model, "gpt-4.1")
+        XCTAssertEqual(terminal.stopReason, "stop")
+        XCTAssertEqual(terminal.usage?.totalTokens, 4)
+        XCTAssertEqual(terminal.effectiveSettings, settings)
+    }
+
+    func testAnthropicDetailedStreamEmitsTerminalMetadata() async throws {
+        AdapterRequestURLProtocol.handler = { request in
+            let data = Data(
+                """
+                data: {"type":"message_start","message":{"model":"claude-sonnet-4-6","usage":{"input_tokens":8,"output_tokens":0}}}
+
+                data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+
+                data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":2}}
+
+                data: {"type":"message_stop"}
+
+                """.utf8)
+            return (self.okResponse(for: request), data)
+        }
+
+        let events = try await collectDetailed(
+            anthropicAdapter.chatCompletionDetailedStream(
+                messages: goldenMessages,
+                config: .anthropic(apiKey: "test", model: "claude-sonnet-4-6"),
+                options: .default
+            ))
+
+        XCTAssertEqual(events.filter { $0.isTerminal }.count, 1)
+        guard case .completed(let terminal) = events.last else {
+            return XCTFail("Expected terminal event")
+        }
+        XCTAssertEqual(terminal.stopReason, "end_turn")
+        XCTAssertEqual(terminal.usage?.promptTokens, 8)
+        XCTAssertEqual(terminal.usage?.completionTokens, 2)
+        XCTAssertEqual(terminal.usage?.totalTokens, 10)
+    }
+
+    func testOllamaDetailedStreamEmitsTerminalOnlyAfterDone() async throws {
+        AdapterRequestURLProtocol.handler = { request in
+            let data = Data(
+                """
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":false}
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
+                """.utf8)
+            return (self.okResponse(for: request), data)
+        }
+
+        let events = try await collectDetailed(
+            ollamaAdapter.chatCompletionDetailedStream(
+                messages: goldenMessages,
+                config: .ollama(model: "qwen3.5:4b"),
+                options: .default
+            ))
+
+        XCTAssertEqual(events.filter { $0.isTerminal }.count, 1)
+        XCTAssertEqual(events.first, .text("OK"))
+        guard case .completed(let terminal) = events.last else {
+            return XCTFail("Expected terminal event")
+        }
+        XCTAssertEqual(terminal.stopReason, "stop")
+        XCTAssertEqual(terminal.usage?.totalTokens, 6)
+    }
+
+    func testOllamaAdapterIgnoresInferenceValuesOutsidePromptSettings() async throws {
+        var capturedRequest: URLRequest?
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validOllamaResponseData())
+        }
+
+        _ = try await ollamaAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: .ollama(model: "qwen3.5:4b"),
+            options: ChatCompletionOptions(
+                temperature: 0.25,
+                topP: 0.8,
+                topK: 20,
+                maxTokens: 123,
+                thinkingMode: .enabled
+            )
+        )
+
+        XCTAssertEqual(
+            try canonicalJSONBody(from: try XCTUnwrap(capturedRequest)),
+            """
+            {"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5:4b","options":{"num_ctx":8192},"stream":false,"think":false}
+            """
+        )
+    }
+
+    func testOllamaAdapterBuildsAllInferenceSettings() async throws {
+        var capturedRequest: URLRequest?
+        let config = LLMProviderConfig.ollama(model: "qwen3.5:4b")
+
+        AdapterRequestURLProtocol.handler = { request in
+            capturedRequest = request
+            return (self.okResponse(for: request), self.validOllamaResponseData())
+        }
+
+        _ = try await ollamaAdapter.chatCompletion(
+            messages: goldenMessages,
+            config: config,
+            options: PromptInferenceCapabilityResolver.resolve(
+                config: config,
+                requested: PromptInferenceSettings(
+                    temperature: 0.2,
+                    topP: 0.9,
+                    topK: 20,
+                    maxTokens: 4096,
+                    thinkingMode: .enabled
+                )
+            ).options
+        )
+
+        try assertJSONBody(
+            try XCTUnwrap(capturedRequest),
+            equals: """
+                {"messages":[{"content":"System","role":"system"},{"content":"Hello","role":"user"}],"model":"qwen3.5:4b","options":{"num_ctx":8192,"num_predict":4096,"temperature":0.2,"top_k":20,"top_p":0.9},"stream":false,"think":true}
+                """
         )
     }
 
@@ -288,9 +639,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testAnthropicAdapterRejectsStrictEOFMissingMessageStop() async throws {
         AdapterRequestURLProtocol.handler = { request in
             let body = """
-            data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+                data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
 
-            """
+                """
             return (self.okResponse(for: request), Data(body.utf8))
         }
 
@@ -315,9 +666,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testOllamaAdapterAcceptsLenientEOFWithoutDoneAfterContent() async throws {
         AdapterRequestURLProtocol.handler = { request in
             let body = """
-            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
 
-            """
+                """
             return (self.okResponse(for: request), Data(body.utf8))
         }
 
@@ -354,9 +705,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testAnthropicAdapterCancelsStreamingRequestMidStream() async throws {
         let server = try StreamingHTTPServer(
             firstChunk: """
-            data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
+                data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}
 
-            """
+                """
         )
         defer { server.stop() }
         let adapter = AnthropicLLMHTTPAdapter(transport: LLMHTTPTransport(session: .shared))
@@ -374,9 +725,9 @@ final class LLMHTTPAdapterTests: XCTestCase {
     func testOllamaAdapterCancelsStreamingRequestMidStream() async throws {
         let server = try StreamingHTTPServer(
             firstChunk: """
-            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
+                {"model":"qwen3.5:4b","message":{"role":"assistant","content":"Hello"},"done":false}
 
-            """
+                """
         )
         defer { server.stop() }
         let adapter = OllamaLLMHTTPAdapter(transport: LLMHTTPTransport(session: .shared))
@@ -427,26 +778,57 @@ final class LLMHTTPAdapterTests: XCTestCase {
         return chunks
     }
 
+    private func collectDetailed(
+        _ stream: AsyncThrowingStream<LLMStreamEvent, Error>
+    ) async throws -> [LLMStreamEvent] {
+        var events: [LLMStreamEvent] = []
+        for try await event in stream {
+            events.append(event)
+        }
+        return events
+    }
+
     private func okResponse(for request: URLRequest) -> HTTPURLResponse {
         HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
     }
 
     private func validOpenAIResponseData() -> Data {
-        Data("""
-        {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
-        """.utf8)
+        Data(
+            """
+            {"model":"gpt-4o","choices":[{"message":{"content":"OK"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}
+            """.utf8)
     }
 
     private func validAnthropicResponseData() -> Data {
-        Data("""
-        {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
-        """.utf8)
+        Data(
+            """
+            {"model":"claude-sonnet-4-6","content":[{"type":"text","text":"Hello!"}],"usage":{"input_tokens":10,"output_tokens":5},"stop_reason":"end_turn"}
+            """.utf8)
     }
 
     private func validOllamaResponseData() -> Data {
-        Data("""
-        {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
-        """.utf8)
+        Data(
+            """
+            {"model":"qwen3.5:4b","message":{"role":"assistant","content":"OK"},"done":true,"done_reason":"stop","prompt_eval_count":5,"eval_count":1}
+            """.utf8)
+    }
+
+    private func jsonBody(from request: URLRequest) throws -> [String: Any] {
+        let data = try XCTUnwrap(bodyData(from: request))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    }
+
+    private func assertJSONBody(
+        _ request: URLRequest,
+        equals expectedJSON: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let actual = try jsonBody(from: request) as NSDictionary
+        let expected = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(expectedJSON.utf8)) as? NSDictionary
+        )
+        XCTAssertEqual(actual, expected, file: file, line: line)
     }
 
     private func canonicalJSONBody(from request: URLRequest) throws -> String {
@@ -478,6 +860,13 @@ final class LLMHTTPAdapterTests: XCTestCase {
     }
 }
 
+private extension LLMStreamEvent {
+    var isTerminal: Bool {
+        if case .completed = self { return true }
+        return false
+    }
+}
+
 private final class StreamingHTTPServer: @unchecked Sendable {
     private let firstChunk: String
     private let listener: NWListener
@@ -504,7 +893,8 @@ private final class StreamingHTTPServer: @unchecked Sendable {
         listener.start(queue: queue)
 
         guard ready.wait(timeout: .now() + 2) == .success,
-              let port = listener.port else {
+            let port = listener.port
+        else {
             throw URLError(.cannotConnectToHost)
         }
 
@@ -526,18 +916,20 @@ private final class StreamingHTTPServer: @unchecked Sendable {
 
         let chunkData = Data(firstChunk.utf8)
         let response = """
-        HTTP/1.1 200 OK\r
-        Content-Type: text/event-stream\r
-        Transfer-Encoding: chunked\r
-        Connection: keep-alive\r
-        \r
-        \(String(chunkData.count, radix: 16))\r
-        \(firstChunk)\r
-        """
+            HTTP/1.1 200 OK\r
+            Content-Type: text/event-stream\r
+            Transfer-Encoding: chunked\r
+            Connection: keep-alive\r
+            \r
+            \(String(chunkData.count, radix: 16))\r
+            \(firstChunk)\r
+            """
 
-        connection.send(content: Data(response.utf8), completion: .contentProcessed { [weak self] _ in
-            self?.observeClose(on: connection)
-        })
+        connection.send(
+            content: Data(response.utf8),
+            completion: .contentProcessed { [weak self] _ in
+                self?.observeClose(on: connection)
+            })
     }
 
     private func observeClose(on connection: NWConnection) {
