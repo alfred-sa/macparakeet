@@ -138,6 +138,43 @@ window, or replace an unrelated open detail page. Recorder-idle queued
 completion may still present the finished meeting, matching the existing
 queued-completion behavior.
 
+### Saved Meeting Notes
+
+Every saved meeting detail exposes a dedicated `Notes` tab immediately after
+`Transcript`, including meetings with no notes and meetings whose transcription
+is still processing. Notes are an editorial layer and never appear inside the
+factual transcript pane. The tab always shows an editable plaintext
+`TextEditor`, including when notes are empty, with Copy, word count, and the
+existing 8,000-word soft-cap warning.
+
+Changes auto-save after a 500 ms idle debounce. A quiet status reports Saving,
+Saved, or a retryable failure; the editor stays writable during persistence.
+Leaving the tab, leaving the detail page, or starting an LLM action flushes the
+latest draft. Chat and result prompts never start after a failed flush, so they
+cannot receive stale notes. Saving blank or whitespace-only text clears the
+canonical value. Database success remains authoritative even if the
+derived-artifact refresh reports a separate retryable warning. Successive
+saves use database last-writer-wins semantics, while artifact refresh remains
+ordered/latest-wins so stale completion cannot overwrite newer files.
+
+### Result Prompt Meeting-Notes Context
+
+The expanded configuration area of every result-prompt card includes an
+**Include meeting notes as context** checkbox and this help text:
+
+> When this prompt runs on a meeting with notes, use those notes as additional
+> context. The transcript remains the source of truth.
+
+The checkbox is present for built-in and custom result prompts, absent for
+Transforms, and off by default. Custom-prompt Create/Edit sheets expose the
+same choice; an enabled card may show a quiet `Meeting notes` context badge.
+The primary UI does not mention `{{userNotes}}`: that variable remains an
+advanced custom-template compatibility mechanism. Chat/Ask does not gain this
+checkbox and retains its existing automatic use of committed meeting notes.
+
+This UI was implemented and locally verified on 2026-09-05. Release
+availability follows the normal channel process.
+
 ### Local Transcription Rename
 
 Local transcription rows expose `Rename...` with a `pencil` symbol in the same Library card/context menu as `Open`, placed before selection and destructive actions. The dialog is compact, prefilled with the effective display title, and rejects blank titles. Until the user explicitly renames it, a Local row's effective title is its original media filename rather than transcript-derived opening words. Rename is a display-metadata operation only: the original source filename/path remain unchanged, and copy-on-import/media-retention behavior is not implied.
@@ -1126,6 +1163,32 @@ App launch → DiscoverViewModel.loadCached() → DiscoverService reads disk cac
           → DiscoverViewModel.refreshInBackground() → DiscoverService fetches remote JSON, writes cache
           → Sidebar card rotates through items every 30s
 ```
+
+---
+
+## LLM Markdown Content
+
+`MarkdownContentView` is the single presentation boundary for generated
+assistant content in Prompt Results, saved Chat, and live Ask. It renders the
+same CommonMark/GFM subset on every surface, including nested lists, static
+checked/unchecked task items, fenced code, and horizontally scrollable tables.
+The surrounding pane owns vertical scrolling; wide Markdown blocks must not
+expand the transcript detail or live-meeting panel.
+
+Generated Markdown remains read-only and selectable. Task boxes communicate
+their checked state but are not controls. Headings and table cells preserve the
+renderer accessibility structure. Fonts and colors map to `DesignSystem` and
+must remain appearance-aware.
+
+Treat rendered model output as untrusted presentation data:
+
+- image loading is disabled, including remote, local-file, bundled, and data URL
+  sources;
+- only `http` and `https` links may be handed to the system browser;
+- activation of `file:`, `javascript:`, custom schemes, and relative
+  destinations is discarded;
+- raw HTML does not create a web view or executable embedded content;
+- Copy Result and exports continue using the original Markdown source.
 
 ---
 
