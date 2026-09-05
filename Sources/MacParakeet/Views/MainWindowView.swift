@@ -38,23 +38,21 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     /// Primary features — the core things users do. Library remains the
     /// universal archive; Meetings is the workflow space for live/upcoming
-    /// and saved meeting work; Prompts automates transcript and meeting
-    /// processing.
+    /// and saved meeting work.
     static var primaryItems: [SidebarItem] {
         var items: [SidebarItem] = [.transcribe, .library, .dictations]
         if AppFeatures.meetingRecordingEnabled {
             items.append(.meetings)
         }
-        items.append(.prompts)
         return items
     }
 
-    /// Configuration and support items. Transforms (ADR-022) is inserted when
-    /// its feature is enabled.
+    /// Automation, configuration, and support items. Prompt automation stays
+    /// above Transforms (ADR-022) when the latter feature is enabled.
     static var configItems: [SidebarItem] {
-        var items: [SidebarItem] = [.vocabulary, .feedback, .settings]
+        var items: [SidebarItem] = [.prompts, .vocabulary, .feedback, .settings]
         if AppFeatures.transformsEnabled {
-            items.insert(.transforms, at: 0)
+            items.insert(.transforms, at: 1)
         }
         return items
     }
