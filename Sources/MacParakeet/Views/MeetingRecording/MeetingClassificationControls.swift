@@ -2,53 +2,13 @@ import MacParakeetCore
 import MacParakeetViewModels
 import SwiftUI
 
-struct MeetingRecordingTypePicker: View {
-    @Bindable var viewModel: MeetingsWorkspaceViewModel
-
-    var body: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            Label(
-                viewModel.hasActiveRecording ? "Meeting type" : "Type for next meeting",
-                systemImage: "person.2"
-            )
-            .font(DesignSystem.Typography.caption.weight(.medium))
-            .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            Picker("Meeting type", selection: $viewModel.recordingMeetingTypeID) {
-                Text("Unclassified").tag(UUID?.none)
-                ForEach(viewModel.meetingClassificationViewModel.meetingTypes) { meetingType in
-                    Text(meetingType.name).tag(Optional(meetingType.id))
-                }
-            }
-            .labelsHidden()
-            .frame(maxWidth: 260)
-            .accessibilityLabel(
-                viewModel.hasActiveRecording ? "Current meeting type" : "Type for next meeting"
-            )
-
-            Spacer(minLength: 0)
-        }
-    }
-}
-
 struct MeetingClassificationBadges: View {
     let classification: MeetingClassification?
     var maximumLabels = 2
 
     var body: some View {
-        if let classification,
-            classification.meetingType != nil || !classification.labels.isEmpty
-        {
+        if let classification, !classification.labels.isEmpty {
             HStack(spacing: 5) {
-                if let meetingType = classification.meetingType {
-                    badge(
-                        meetingType.name,
-                        icon: meetingType.iconName ?? "person.2",
-                        tint: MeetingClassificationTint.color(for: meetingType.colorToken, fallback: 0),
-                        isPrimary: true
-                    )
-                }
-
                 ForEach(Array(classification.labels.prefix(maximumLabels).enumerated()), id: \.element.id) {
                     index, label in
                     badge(
@@ -91,16 +51,10 @@ struct MeetingClassificationBadges: View {
 
 struct MeetingClassificationFilterBar: View {
     @Bindable var libraryViewModel: TranscriptionLibraryViewModel
-    @State private var showingTypeFilters = false
     @State private var showingLabelFilters = false
-
-    private var classificationViewModel: MeetingClassificationViewModel {
-        libraryViewModel.meetingClassificationViewModel
-    }
 
     var body: some View {
         HStack(spacing: 7) {
-            typeMenu
             labelMenu
 
             if libraryViewModel.hasMeetingClassificationFilter {
@@ -116,29 +70,11 @@ struct MeetingClassificationFilterBar: View {
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Meeting classification filters")
-    }
-
-    private var typeMenu: some View {
-        Button {
-            showingLabelFilters = false
-            showingTypeFilters.toggle()
-        } label: {
-            filterButtonLabel(
-                title: typeFilterTitle,
-                icon: "person.2"
-            )
-        }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .popover(isPresented: $showingTypeFilters, arrowEdge: .bottom) {
-            MeetingTypeFilterPopover(libraryViewModel: libraryViewModel)
-        }
+        .accessibilityLabel("Transcription label filters")
     }
 
     private var labelMenu: some View {
         Button {
-            showingTypeFilters = false
             showingLabelFilters.toggle()
         } label: {
             filterButtonLabel(
@@ -151,12 +87,6 @@ struct MeetingClassificationFilterBar: View {
         .popover(isPresented: $showingLabelFilters, arrowEdge: .bottom) {
             MeetingLabelFilterPopover(libraryViewModel: libraryViewModel)
         }
-    }
-
-    private var typeFilterTitle: String {
-        if libraryViewModel.unclassifiedMeetingsOnly { return "Unclassified" }
-        let count = libraryViewModel.selectedMeetingTypeIDs.count
-        return count == 0 ? "All types" : "Types · \(count)"
     }
 
     private var labelFilterTitle: String {
@@ -177,52 +107,6 @@ struct MeetingClassificationFilterBar: View {
             )
     }
 
-}
-
-private struct MeetingTypeFilterPopover: View {
-    @Bindable var libraryViewModel: TranscriptionLibraryViewModel
-    @State private var query = ""
-
-    private var types: [MeetingType] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
-            return libraryViewModel.meetingClassificationViewModel.meetingTypes
-        }
-        return libraryViewModel.meetingClassificationViewModel.meetingTypes.filter {
-            $0.name.localizedCaseInsensitiveContains(trimmed)
-        }
-    }
-
-    var body: some View {
-        filterPopoverContainer(searchText: $query, prompt: "Search meeting types") {
-            FlowLayout(spacing: 7) {
-                filterChip(
-                    name: "Unclassified",
-                    icon: "questionmark",
-                    tint: DesignSystem.Colors.textSecondary,
-                    selected: libraryViewModel.unclassifiedMeetingsOnly
-                ) {
-                    libraryViewModel.setUnclassifiedMeetingsFilter(
-                        !libraryViewModel.unclassifiedMeetingsOnly
-                    )
-                }
-
-                ForEach(Array(types.enumerated()), id: \.element.id) { index, meetingType in
-                    filterChip(
-                        name: meetingType.name,
-                        icon: meetingType.iconName,
-                        tint: MeetingClassificationTint.color(
-                            for: meetingType.colorToken,
-                            fallback: index
-                        ),
-                        selected: libraryViewModel.selectedMeetingTypeIDs.contains(meetingType.id)
-                    ) {
-                        libraryViewModel.toggleMeetingTypeFilter(meetingType.id)
-                    }
-                }
-            }
-        }
-    }
 }
 
 private struct MeetingLabelFilterPopover: View {
@@ -346,21 +230,6 @@ struct MeetingClassificationEditor: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
-                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                        Text("Meeting type")
-                            .font(DesignSystem.Typography.bodySmall.weight(.semibold))
-
-                        MeetingTypeSearchMenu(
-                            selectedType: classification.meetingType,
-                            meetingTypes: viewModel.meetingTypes,
-                            onSelect: { viewModel.setMeetingType($0, for: transcription.id) },
-                            onCreate: {
-                                viewModel.createMeetingType(named: $0, assigningTo: transcription.id)
-                            }
-                        )
-
-                    }
-
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Labels")
                             .font(DesignSystem.Typography.bodySmall.weight(.semibold))
@@ -792,7 +661,7 @@ private struct MeetingClassificationPopoverModifier: ViewModifier {
                     transcription: transcription,
                     viewModel: viewModel
                 )
-                .frame(width: 340, height: 260)
+                .frame(width: 340, height: 210)
             }
         }
     }

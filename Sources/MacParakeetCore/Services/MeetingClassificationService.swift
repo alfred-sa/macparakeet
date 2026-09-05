@@ -4,7 +4,6 @@ import OSLog
 
 public enum MeetingClassificationServiceError: Error, LocalizedError, Equatable {
     case transcriptionNotFound(UUID)
-    case notMeeting(UUID)
     case meetingTypeUnavailable(UUID)
     case meetingLabelsUnavailable(Set<UUID>)
 
@@ -12,8 +11,6 @@ public enum MeetingClassificationServiceError: Error, LocalizedError, Equatable 
         switch self {
         case .transcriptionNotFound:
             return "The transcription could not be found."
-        case .notMeeting:
-            return "Only meeting transcriptions can be classified."
         case .meetingTypeUnavailable:
             return "The selected meeting type does not exist or is archived."
         case .meetingLabelsUnavailable:
@@ -82,7 +79,7 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
 
     public func classification(for transcriptionId: UUID) throws -> MeetingClassification {
         try dbQueue.read { db in
-            let transcription = try Self.requireMeeting(id: transcriptionId, in: db)
+            let transcription = try Self.requireTranscription(id: transcriptionId, in: db)
             let meetingType = try transcription.meetingTypeId.flatMap {
                 try MeetingType.fetchOne(db, key: $0)
             }
@@ -103,7 +100,7 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
 
     public func setMeetingType(_ meetingTypeId: UUID?, for transcriptionId: UUID) async throws {
         let transcription = try await dbQueue.write { db in
-            var transcription = try Self.requireMeeting(id: transcriptionId, in: db)
+            var transcription = try Self.requireTranscription(id: transcriptionId, in: db)
             if meetingTypeId != transcription.meetingTypeId {
                 try Self.validate(meetingTypeId: meetingTypeId, in: db)
             }
@@ -117,7 +114,7 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
 
     public func replaceLabels(_ labelIds: Set<UUID>, for transcriptionId: UUID) async throws {
         let transcription = try await dbQueue.write { db in
-            let transcription = try Self.requireMeeting(id: transcriptionId, in: db)
+            let transcription = try Self.requireTranscription(id: transcriptionId, in: db)
             let currentLabelIds = try Set(
                 TranscriptionMeetingLabel
                     .filter(TranscriptionMeetingLabel.Columns.transcriptionId == transcriptionId)
@@ -141,7 +138,7 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
         for transcriptionId: UUID
     ) async throws {
         let transcription = try await dbQueue.write { db in
-            var transcription = try Self.requireMeeting(id: transcriptionId, in: db)
+            var transcription = try Self.requireTranscription(id: transcriptionId, in: db)
             if meetingTypeId != transcription.meetingTypeId {
                 try Self.validate(meetingTypeId: meetingTypeId, in: db)
             }
@@ -166,7 +163,7 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
     }
 
     private func refreshArtifactIfConfigured(for transcription: Transcription) async {
-        guard let artifactRefresher else { return }
+        guard transcription.sourceType == .meeting, let artifactRefresher else { return }
         do {
             let currentClassification = try classification(for: transcription.id)
             try await artifactRefresher.refreshArtifact(
@@ -180,12 +177,9 @@ public final class MeetingClassificationService: MeetingClassificationServicePro
         }
     }
 
-    private static func requireMeeting(id: UUID, in db: Database) throws -> Transcription {
+    private static func requireTranscription(id: UUID, in db: Database) throws -> Transcription {
         guard let transcription = try Transcription.fetchOne(db, key: id) else {
             throw MeetingClassificationServiceError.transcriptionNotFound(id)
-        }
-        guard transcription.sourceType == .meeting else {
-            throw MeetingClassificationServiceError.notMeeting(id)
         }
         return transcription
     }

@@ -10,6 +10,11 @@ MacParakeet uses **SQLite via GRDB** for all persistent storage. Single database
 
 ## Versioned prompts and meeting classification (2026-09-05)
 
+> Label unification amendment: user-defined classification is label-only and
+> applies to every transcription source. Existing custom meeting types are
+> copied to labels by `v0.37-general-transcription-labels`; their legacy rows
+> and `meetingTypeId` values remain temporarily for downgrade compatibility.
+
 The versioned Prompt Manager extends the relational model with:
 
 - `prompt_versions`: immutable, monotonically numbered versions containing

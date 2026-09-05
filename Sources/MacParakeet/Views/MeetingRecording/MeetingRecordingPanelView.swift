@@ -42,9 +42,6 @@ struct MeetingRecordingPanelView: View {
         case .notes:
             LiveNotesPaneView(
                 viewModel: viewModel.notesViewModel,
-                meetingTypes: viewModel.meetingTypes,
-                activeMeetingTypeID: viewModel.activeMeetingTypeID,
-                onMeetingTypeChange: { viewModel.selectMeetingType($0) },
                 elapsedSeconds: viewModel.elapsedSeconds,
                 isPaused: viewModel.isPaused
             )

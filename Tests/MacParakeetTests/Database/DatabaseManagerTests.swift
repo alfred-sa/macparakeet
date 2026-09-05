@@ -1518,6 +1518,40 @@ final class DatabaseManagerTests: XCTestCase {
         try? FileManager.default.removeItem(atPath: dbPath)
     }
 
+    func testGeneralLabelsMigrationCopiesLegacyTypesAndAssignments() throws {
+        let dbPath = FileManager.default.temporaryDirectory
+            .appendingPathComponent("general_labels_migration_\(UUID().uuidString).db")
+            .path
+        defer { cleanupDatabaseFiles(atPath: dbPath) }
+
+        let manager = try DatabaseManager(path: dbPath)
+        let transcriptionRepository = TranscriptionRepository(dbQueue: manager.dbQueue)
+        let typeRepository = MeetingTypeRepository(dbQueue: manager.dbQueue)
+        let meeting = Transcription(
+            fileName: "Legacy meeting",
+            status: .completed,
+            sourceType: .meeting
+        )
+        let legacyType = MeetingType(name: "Prospect", colorToken: "blue")
+        try transcriptionRepository.save(meeting)
+        try typeRepository.save(legacyType)
+        try transcriptionRepository.updateMeetingType(id: meeting.id, meetingTypeId: legacyType.id)
+
+        try manager.dbQueue.write { db in
+            try db.execute(
+                sql: "DELETE FROM grdb_migrations WHERE identifier = ?",
+                arguments: ["v0.37-general-transcription-labels"]
+            )
+        }
+        try DatabaseManager.makeMigrator().migrate(manager.dbQueue)
+
+        let labels: [MeetingLabel] = try TranscriptionMeetingLabelRepository(dbQueue: manager.dbQueue)
+            .labels(for: meeting.id)
+        XCTAssertEqual(labels.map(\.name), ["Prospect"])
+        XCTAssertEqual(labels.first?.colorToken, "blue")
+        XCTAssertEqual(try transcriptionRepository.fetch(id: meeting.id)?.meetingTypeId, legacyType.id)
+    }
+
     func testTransformWorkbenchCleanupMigrationPreservesRestoredHistoryWhenRerun() throws {
         let dbPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("transform_workbench_cleanup_\(UUID().uuidString).db")

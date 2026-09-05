@@ -17,9 +17,6 @@ import SwiftUI
 /// signal of what the user actually cares about.
 struct LiveNotesPaneView: View {
     @Bindable var viewModel: MeetingNotesViewModel
-    var meetingTypes: [MeetingType] = []
-    var activeMeetingTypeID: UUID?
-    var onMeetingTypeChange: ((UUID?) -> Void)?
     /// Elapsed meeting time, supplied by the parent panel. Used by the
     /// `/now` slash command to format the inserted timestamp. Defaults to
     /// 0 so previews and unit tests don't need to plumb it.
@@ -34,8 +31,6 @@ struct LiveNotesPaneView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            meetingTypePicker
-            Divider()
             editor
             if viewModel.isApproachingSoftCap {
                 Divider()
@@ -50,36 +45,6 @@ struct LiveNotesPaneView: View {
             try? await Task.sleep(for: .milliseconds(100))
             editorFocused = true
         }
-    }
-
-    private var meetingTypePicker: some View {
-        HStack(spacing: DesignSystem.Spacing.sm) {
-            Label("Meeting type", systemImage: "person.2")
-                .font(DesignSystem.Typography.caption.weight(.medium))
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-
-            Spacer(minLength: DesignSystem.Spacing.sm)
-
-            Picker("Meeting type", selection: meetingTypeBinding) {
-                Text("Unclassified").tag(UUID?.none)
-                ForEach(meetingTypes) { meetingType in
-                    Text(meetingType.name).tag(Optional(meetingType.id))
-                }
-            }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(maxWidth: 210)
-        }
-        .padding(.horizontal, DesignSystem.Spacing.md)
-        .padding(.vertical, DesignSystem.Spacing.sm)
-        .background(DesignSystem.Colors.cardBackground)
-    }
-
-    private var meetingTypeBinding: Binding<UUID?> {
-        Binding(
-            get: { activeMeetingTypeID },
-            set: { onMeetingTypeChange?($0) }
-        )
     }
 
     private var editor: some View {

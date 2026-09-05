@@ -1624,7 +1624,7 @@ struct TranscriptResultView: View {
                     .help(transcription.sourceType == .meeting ? "Rename meeting" : "Rename transcription")
                 }
 
-                if transcription.sourceType == .meeting, let meetingClassificationViewModel {
+                if let meetingClassificationViewModel {
                     MeetingClassificationBadges(
                         classification: meetingClassificationViewModel.classification(for: transcription.id)
                     )
@@ -1637,8 +1637,8 @@ struct TranscriptResultView: View {
                             .foregroundStyle(DesignSystem.Colors.textTertiary)
                     }
                     .buttonStyle(.plain)
-                    .help("Edit meeting type and labels")
-                    .accessibilityLabel("Edit meeting classification")
+                    .help("Edit labels")
+                    .accessibilityLabel("Edit transcription labels")
                     .meetingClassificationPopover(
                         item: $classificationTarget,
                         transcription: activeTranscription,

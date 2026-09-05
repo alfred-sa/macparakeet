@@ -1817,6 +1817,44 @@ public final class DatabaseManager: Sendable {
             )
         }
 
+        // v0.37 — Labels are the single user-defined classification shared by
+        // every transcription source. Preserve legacy custom meeting types by
+        // copying them to labels and attaching those labels to their meetings.
+        // The old columns/tables remain readable for downgrade compatibility.
+        migrator.registerMigration("v0.37-general-transcription-labels") { db in
+            let meetingTypes = try MeetingType.fetchAll(db)
+            for meetingType in meetingTypes {
+                let existingByName = try MeetingLabel
+                    .filter(sql: "name = ? COLLATE NOCASE", arguments: [meetingType.name])
+                    .fetchOne(db)
+
+                let label: MeetingLabel
+                if let existingByName {
+                    label = existingByName
+                } else {
+                    let idIsAvailable = try MeetingLabel.fetchOne(db, key: meetingType.id) == nil
+                    label = MeetingLabel(
+                        id: idIsAvailable ? meetingType.id : UUID(),
+                        name: meetingType.name,
+                        colorToken: meetingType.colorToken,
+                        sortOrder: meetingType.sortOrder,
+                        isArchived: meetingType.isArchived,
+                        createdAt: meetingType.createdAt,
+                        updatedAt: meetingType.updatedAt
+                    )
+                    try label.insert(db)
+                }
+
+                try db.execute(
+                    sql: """
+                        INSERT OR IGNORE INTO transcription_meeting_labels (transcriptionId, labelId)
+                        SELECT id, ? FROM transcriptions WHERE meetingTypeId = ?
+                        """,
+                    arguments: [label.id, meetingType.id]
+                )
+            }
+        }
+
         return migrator
     }
 

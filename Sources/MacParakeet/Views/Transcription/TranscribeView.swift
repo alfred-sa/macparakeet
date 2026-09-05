@@ -155,8 +155,6 @@ struct TranscribeView: View {
                         )
                         .padding(.horizontal, DesignSystem.Spacing.xl)
 
-                        MeetingRecordingTypePicker(viewModel: meetingsWorkspaceViewModel)
-                            .padding(.horizontal, DesignSystem.Spacing.xl + DesignSystem.Spacing.sm)
                     }
 
                     // Error banner

@@ -19,7 +19,6 @@ struct MeetingsView: View {
     @State private var classificationTarget: Transcription?
     @State private var showingAskPromptsSheet = false
     @State private var showingPromptLibrary = false
-    @State private var showingMeetingPromptPolicies = false
     @FocusState private var recentMeetingsSelectionFocused: Bool
 
     private static let rightRailWidth: CGFloat = 280
@@ -195,9 +194,6 @@ struct MeetingsView: View {
                 }
             ) {
                 PromptLibraryView(viewModel: viewModel.promptsViewModel)
-            }
-            .sheet(isPresented: $showingMeetingPromptPolicies) {
-                MeetingPromptPolicyEditor(viewModel: viewModel)
             }
     }
 
@@ -475,13 +471,6 @@ struct MeetingsView: View {
                 }
 
                 Spacer(minLength: 0)
-
-                Button {
-                    showingMeetingPromptPolicies = true
-                } label: {
-                    Label("By Type", systemImage: "slider.horizontal.3")
-                }
-                .parakeetAction(.secondary)
 
                 Button {
                     showingPromptLibrary = true

@@ -174,7 +174,7 @@ final class MeetingClassificationRepositoryTests: XCTestCase {
         XCTAssertEqual(completed.rawTranscript, staleProcessingSnapshot.rawTranscript)
     }
 
-    func testClassificationRejectsNonMeetingAndArchivedValuesWithoutPartialWrite() async throws {
+    func testClassificationLabelsAnyTranscriptionSourceAndRejectsArchivedValues() async throws {
         let file = makeTranscription(fileName: "audio.m4a", sourceType: .file)
         try transcriptionRepository.save(file)
         let archivedType = MeetingType(name: "Old", isArchived: true)
@@ -183,17 +183,16 @@ final class MeetingClassificationRepositoryTests: XCTestCase {
         try labelRepository.save(label)
         let service = MeetingClassificationService(dbQueue: manager.dbQueue)
 
+        try await service.replaceLabels([label.id], for: file.id)
+        XCTAssertEqual(try service.classification(for: file.id).labels.map(\.id), [label.id])
+
         do {
-            try await service.update(
-                meetingTypeId: archivedType.id,
-                labelIds: [label.id],
-                for: file.id
-            )
-            XCTFail("Expected non-meeting classification to fail")
+            try await service.setMeetingType(archivedType.id, for: file.id)
+            XCTFail("Expected the archived type to be rejected")
         } catch let error as MeetingClassificationServiceError {
-            XCTAssertEqual(error, .notMeeting(file.id))
+            XCTAssertEqual(error, .meetingTypeUnavailable(archivedType.id))
         }
-        XCTAssertTrue(try joinRepository.labelIDs(for: file.id).isEmpty)
+        XCTAssertNil(try transcriptionRepository.fetch(id: file.id)?.meetingTypeId)
     }
 
     func testLibraryFiltersTypesLabelsAndUnclassifiedBeforePagination() async throws {

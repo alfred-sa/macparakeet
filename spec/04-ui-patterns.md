@@ -148,28 +148,23 @@ window, or replace an unrelated open detail page. Recorder-idle queued
 completion may still present the finished meeting, matching the existing
 queued-completion behavior.
 
-### Meeting Classification Popover
+### Transcription Labels Popover
 
-Meeting type and label editing uses a compact popover anchored to the action
-that opened it from the Meetings workspace, Library, or saved-meeting detail.
-It floats above the current context without masking or resizing the meeting and
-is never presented as a blocking sheet. The popover does not repeat the meeting
-title or add its own heading; clicking outside or pressing Escape dismisses it.
+Label editing uses a compact popover anchored to the action that opened it from
+Library, the Meetings workspace, or any saved-transcription detail. Labels are
+shared by meetings, podcasts, videos, and local files. The popover floats above
+the current context without masking or resizing it and is never presented as a
+blocking sheet. It does not repeat the transcription title or add its own
+heading; clicking outside or pressing Escape dismisses it.
 
-The Meetings workspace does not expose a separate "Type for next meeting"
-picker below the recording tile. During an active recording, the type picker
-lives at the top of the live Notes pane, where it has immediate context; changes
-update the in-flight recording and its eventual saved meeting. Outside the live
-panel, classification stays attached to saved meetings through the popover.
+The source tabs — Meetings, Podcasts, Video, and Local — are the transcription
+types. The product does not add a second, user-defined "meeting type" taxonomy.
+Legacy custom meeting types are migrated to labels without removing the legacy
+database value, preserving downgrade compatibility.
 
-Meeting types use one searchable dropdown: its first row is a search/create
-field, followed by filtered existing types and a contextual create action when
-there is no exact match. Administrative actions do not appear in this contextual
-popover. Library's Meetings view owns a dedicated **Meeting types** card for
-creating types by pressing Return and archiving active types. Library's type
-and label filters open compact popovers with an integrated search field. Their
-options use colored, wrapping chips instead of vertical menu rows, preserving
-the meeting type and label colors and allowing multi-selection at a glance.
+Library's label filter opens a compact popover with an integrated search field.
+Its options use colored, wrapping chips instead of vertical menu rows, allowing
+multi-selection at a glance in every source tab.
 
 Labels use the same search-or-create semantics with live suggestions from
 existing labels. Assigned labels render as removable

@@ -84,11 +84,9 @@ struct TranscriptionLibraryView: View {
                 .padding(.bottom, DesignSystem.Spacing.sm)
             }
 
-            if AppFeatures.meetingRecordingEnabled {
-                MeetingClassificationFilterBar(libraryViewModel: viewModel)
-                    .padding(.horizontal, DesignSystem.Spacing.lg)
-                    .padding(.bottom, DesignSystem.Spacing.sm)
-            }
+            MeetingClassificationFilterBar(libraryViewModel: viewModel)
+                .padding(.horizontal, DesignSystem.Spacing.lg)
+                .padding(.bottom, DesignSystem.Spacing.sm)
 
             if let errorMessage = viewModel.errorMessage {
                 Text(errorMessage)
@@ -279,6 +277,9 @@ struct TranscriptionLibraryView: View {
                     ForEach(viewModel.filteredTranscriptions) { transcription in
                         TranscriptionThumbnailCard(
                             transcription: transcription,
+                            classification: viewModel.meetingClassificationViewModel.classification(
+                                for: transcription.id
+                            ),
                             searchText: viewModel.searchText,
                             isSelected: viewModel.isTranscriptionSelected(transcription),
                             showsSelectionControls: viewModel.isBulkSelectionModeEnabled
@@ -315,11 +316,6 @@ struct TranscriptionLibraryView: View {
     private var meetingsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                MeetingTypesManagementCard(viewModel: viewModel.meetingClassificationViewModel)
-                    .padding(.horizontal, DesignSystem.Spacing.lg)
-                    .padding(.top, DesignSystem.Spacing.md)
-                    .padding(.bottom, DesignSystem.Spacing.md)
-
                 ForEach(viewModel.groupedTranscriptions, id: \.group) { section in
                     MeetingDateGroupHeader(group: section.group)
                     ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
@@ -389,13 +385,13 @@ struct TranscriptionLibraryView: View {
             }
         }
 
-        if transcription.sourceType == .meeting {
-            Button {
-                classificationTarget = transcription
-            } label: {
-                Label("Classify...", systemImage: "tag")
-            }
+        Button {
+            classificationTarget = transcription
+        } label: {
+            Label("Edit Labels...", systemImage: "tag")
+        }
 
+        if transcription.sourceType == .meeting {
             Divider()
 
             let audioState = MeetingAudioFile.state(for: transcription)
