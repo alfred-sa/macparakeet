@@ -68,7 +68,7 @@ Minimum window width: 800pt.
 The sidebar uses NavigationSplitView with flat items (icon + label):
 
 - **Transcribe** (`waveform`) -- Capture hub: YouTube card + file drop card + Meeting Recording tile
-- **Library** (`square.grid.2x2`) -- All transcriptions; non-meeting filters offer a persistent Grid/List switch, while Meetings keeps its purpose-built date-grouped list
+- **Library** (`square.grid.2x2`) -- All transcriptions; every filter offers the same persistent Grid/List switch
 - **Dictations** (`clock.arrow.circlepath`) -- Flat history list with bottom bar player
 - **Meetings** (`person.2.wave.2`) -- Workflow space for upcoming, live, and saved meeting work; visible when `AppFeatures.meetingRecordingEnabled` is true
 - **Prompts** (`text.quote`) -- First-class prompt manager for versioned result prompts and Transforms
@@ -122,7 +122,7 @@ The tile body is informational. Only the visible Start and Stop capsules are rea
 
 ### Library Meetings Filter
 
-When `Library.filter == .meeting`, the view renders a date-grouped list (`Today` / `Yesterday` / `Previous 7 Days` / `Previous 30 Days` / `{Month Year}`) using `MeetingDateGroupHeader` + `MeetingRowCard` instead of the thumbnail grid the other filters use. Meeting rows surface saved-audio state directly (`Audio saved`, `Audio removed`, or `Audio missing`) so playback/retranscription expectations are visible before the user opens a menu.
+When list mode is selected, the view renders a date-grouped list (`Today` / `Yesterday` / `Previous 7 Days` / `Previous 30 Days` / `{Month Year}`) using `MeetingDateGroupHeader` + `MeetingRowCard`. Meeting rows surface saved-audio state directly (`Audio saved`, `Audio removed`, or `Audio missing`) so playback/retranscription expectations are visible before the user opens a menu.
 
 A finalized meeting whose `meetingCaptureReport.quality` is `partial` shows the
 existing **Partial audio** badge in its Library meeting row and the existing
@@ -133,8 +133,8 @@ audible signal. Microphone audio remains saved.” This state is durable and
 appears after finalization; it does not add a live alert or automatically
 restart ScreenCaptureKit during a meeting.
 
-All other Library filters expose a compact Grid/List segmented control in the
-header. The preference persists across launches. List mode reuses the
+Every Library filter, including Meetings, exposes a compact Grid/List segmented
+control in the header. The preference persists across launches. List mode reuses the
 date-grouped row presentation and adds the transcription source beside the
 title; search, label filters, contextual actions, pagination, and bulk
 selection behave identically in either layout. Grid cards reserve a fixed-height

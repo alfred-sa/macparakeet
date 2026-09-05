@@ -62,21 +62,19 @@ struct TranscriptionLibraryView: View {
 
                 Spacer()
 
-                if !isMeetingContext {
-                    Picker("Library layout", selection: $libraryLayoutMode) {
-                        Image(systemName: "square.grid.2x2")
-                            .accessibilityLabel("Grid")
-                            .tag(LibraryLayoutMode.grid)
-                        Image(systemName: "list.bullet")
-                            .accessibilityLabel("List")
-                            .tag(LibraryLayoutMode.list)
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                    .accessibilityLabel("Library layout")
-                    .frame(width: 76)
-                    .help(libraryLayoutMode == .grid ? "Switch to list view" : "Switch to grid view")
+                Picker("Library layout", selection: $libraryLayoutMode) {
+                    Image(systemName: "square.grid.2x2")
+                        .accessibilityLabel("Grid")
+                        .tag(LibraryLayoutMode.grid)
+                    Image(systemName: "list.bullet")
+                        .accessibilityLabel("List")
+                        .tag(LibraryLayoutMode.list)
                 }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .accessibilityLabel("Library layout")
+                .frame(width: 76)
+                .help(libraryLayoutMode == .grid ? "Switch to list view" : "Switch to grid view")
 
                 if showsSelectManyButton {
                     LibrarySelectManyButton {
@@ -963,7 +961,7 @@ struct TranscriptionLibraryView: View {
     }
 
     private var usesListLayout: Bool {
-        isMeetingContext || libraryLayoutMode == .list
+        libraryLayoutMode == .list
     }
 
     private var bulkOperationTitle: String {
