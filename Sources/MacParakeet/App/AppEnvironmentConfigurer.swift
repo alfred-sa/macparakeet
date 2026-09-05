@@ -345,6 +345,12 @@ final class AppEnvironmentConfigurer {
             meetingTypeIDProvider: { [weak meetingsWorkspaceViewModel] in
                 meetingsWorkspaceViewModel?.recordingMeetingTypeID
             },
+            meetingTypesProvider: { [weak meetingsWorkspaceViewModel] in
+                meetingsWorkspaceViewModel?.meetingClassificationViewModel.meetingTypes ?? []
+            },
+            meetingTypeIDSetter: { [weak meetingsWorkspaceViewModel] meetingTypeID in
+                meetingsWorkspaceViewModel?.recordingMeetingTypeID = meetingTypeID
+            },
             shouldShowFloatingMeetingPill: { env.runtimePreferences.shouldShowMeetingRecordingPill },
             probableCalendarSnapshotProvider: {
                 calendarCoordinator?.probableSnapshotForManualStart()

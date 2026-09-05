@@ -196,10 +196,6 @@ struct MeetingsView: View {
             ) {
                 PromptLibraryView(viewModel: viewModel.promptsViewModel)
             }
-            .meetingClassificationInspector(
-                item: $classificationTarget,
-                viewModel: viewModel.recentMeetingsViewModel.meetingClassificationViewModel
-            )
             .sheet(isPresented: $showingMeetingPromptPolicies) {
                 MeetingPromptPolicyEditor(viewModel: viewModel)
             }
@@ -234,17 +230,12 @@ struct MeetingsView: View {
     }
 
     private var recordingSurface: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-            MeetingRecordingTile(
-                viewModel: viewModel.meetingPillViewModel,
-                permissionState: meetingPermissionState,
-                onTap: onRecordMeeting,
-                onPauseToggle: onPauseToggleMeeting
-            )
-
-            MeetingRecordingTypePicker(viewModel: viewModel)
-            .padding(.horizontal, DesignSystem.Spacing.sm)
-        }
+        MeetingRecordingTile(
+            viewModel: viewModel.meetingPillViewModel,
+            permissionState: meetingPermissionState,
+            onTap: onRecordMeeting,
+            onPauseToggle: onPauseToggleMeeting
+        )
     }
 
     private func contentColumns(usesTwoColumnLayout: Bool) -> some View {
@@ -606,6 +597,11 @@ struct MeetingsView: View {
                             viewModel.recentMeetingsViewModel.retryMeetingTranscription(transcription)
                         },
                         menuContent: { recentMeetingMenu(for: transcription) }
+                    )
+                    .meetingClassificationPopover(
+                        item: $classificationTarget,
+                        transcription: transcription,
+                        viewModel: viewModel.recentMeetingsViewModel.meetingClassificationViewModel
                     )
                     if idx < section.items.count - 1 {
                         MeetingRowHairline()

@@ -396,28 +396,29 @@ struct MeetingClassificationEditor: View {
     }
 }
 
-private struct MeetingClassificationInspectorModifier: ViewModifier {
+private struct MeetingClassificationPopoverModifier: ViewModifier {
     @Binding var item: Transcription?
+    let transcription: Transcription
     let viewModel: MeetingClassificationViewModel?
 
     func body(content: Content) -> some View {
-        content.inspector(isPresented: isPresented) {
-            if let transcription = item, let viewModel {
+        content.popover(isPresented: isPresented, arrowEdge: .top) {
+            if let viewModel {
                 MeetingClassificationEditor(
                     transcription: transcription,
                     viewModel: viewModel,
                     onClose: { item = nil }
                 )
-                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
+                .frame(width: 340, height: 330)
             }
         }
     }
 
     private var isPresented: Binding<Bool> {
         Binding(
-            get: { item != nil },
+            get: { item?.id == transcription.id },
             set: { presented in
-                if !presented {
+                if !presented, item?.id == transcription.id {
                     item = nil
                 }
             }
@@ -426,11 +427,18 @@ private struct MeetingClassificationInspectorModifier: ViewModifier {
 }
 
 extension View {
-    func meetingClassificationInspector(
+    func meetingClassificationPopover(
         item: Binding<Transcription?>,
+        transcription: Transcription,
         viewModel: MeetingClassificationViewModel?
     ) -> some View {
-        modifier(MeetingClassificationInspectorModifier(item: item, viewModel: viewModel))
+        modifier(
+            MeetingClassificationPopoverModifier(
+                item: item,
+                transcription: transcription,
+                viewModel: viewModel
+            )
+        )
     }
 }
 

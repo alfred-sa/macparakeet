@@ -263,10 +263,6 @@ struct TranscriptionLibraryView: View {
             .onDisappear {
                 cancelBulkExport()
             }
-            .meetingClassificationInspector(
-                item: $classificationTarget,
-                viewModel: viewModel.meetingClassificationViewModel
-            )
     }
 
     private var thumbnailGrid: some View {
@@ -301,6 +297,11 @@ struct TranscriptionLibraryView: View {
                         .contextMenu {
                             libraryMenuItems(for: transcription)
                         }
+                        .meetingClassificationPopover(
+                            item: $classificationTarget,
+                            transcription: transcription,
+                            viewModel: viewModel.meetingClassificationViewModel
+                        )
                     }
                 }
                 loadMoreFooter
@@ -340,6 +341,11 @@ struct TranscriptionLibraryView: View {
                                 viewModel.retryMeetingTranscription(transcription)
                             },
                             menuContent: { libraryMenuItems(for: transcription) }
+                        )
+                        .meetingClassificationPopover(
+                            item: $classificationTarget,
+                            transcription: transcription,
+                            viewModel: viewModel.meetingClassificationViewModel
                         )
                         if idx < section.items.count - 1 {
                             MeetingRowHairline()

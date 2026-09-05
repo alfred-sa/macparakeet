@@ -148,14 +148,19 @@ window, or replace an unrelated open detail page. Recorder-idle queued
 completion may still present the finished meeting, matching the existing
 queued-completion behavior.
 
-### Meeting Classification Inspector
+### Meeting Classification Popover
 
-Meeting type and label editing uses the native trailing inspector from the
-Meetings workspace, Library, and saved-meeting detail. It must stay integrated
-with the current window and keep the underlying meeting context visible; it is
-not presented as a blocking sheet. The inspector is resizable between 320 and
-440 points and closes through its compact close control or the native inspector
-gesture.
+Meeting type and label editing uses a compact popover anchored to the action
+that opened it from the Meetings workspace, Library, or saved-meeting detail.
+It floats above the current context without masking or resizing the meeting and
+is never presented as a blocking sheet. Clicking outside or using its compact
+close control dismisses it.
+
+The Meetings workspace does not expose a separate "Type for next meeting"
+picker below the recording tile. During an active recording, the type picker
+lives at the top of the live Notes pane, where it has immediate context; changes
+update the in-flight recording and its eventual saved meeting. Outside the live
+panel, classification stays attached to saved meetings through the popover.
 
 New types and labels use keyboard-first text fields. Pressing Return creates
 and immediately assigns the entered value; there is no separate **Add** button.

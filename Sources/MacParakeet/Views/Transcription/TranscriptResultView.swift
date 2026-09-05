@@ -605,10 +605,6 @@ struct TranscriptResultView: View {
             ) {
                 PromptLibraryView(viewModel: promptsViewModel)
             }
-            .meetingClassificationInspector(
-                item: $classificationTarget,
-                viewModel: meetingClassificationViewModel
-            )
             .alert("New speaker", isPresented: $showingNewSpeakerPrompt) {
                 TextField("Speaker name", text: $newSpeakerLabel)
                 Button("Cancel", role: .cancel) {
@@ -1643,6 +1639,11 @@ struct TranscriptResultView: View {
                     .buttonStyle(.plain)
                     .help("Edit meeting type and labels")
                     .accessibilityLabel("Edit meeting classification")
+                    .meetingClassificationPopover(
+                        item: $classificationTarget,
+                        transcription: activeTranscription,
+                        viewModel: meetingClassificationViewModel
+                    )
                 }
 
                 if transcription.recoveredFromCrash {
