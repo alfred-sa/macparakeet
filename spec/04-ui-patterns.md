@@ -162,10 +162,12 @@ lives at the top of the live Notes pane, where it has immediate context; changes
 update the in-flight recording and its eventual saved meeting. Outside the live
 panel, classification stays attached to saved meetings through the popover.
 
-New types and labels use keyboard-first text fields. Pressing Return creates
-and immediately assigns the entered value; there is no separate **Add** button.
-Existing types remain selectable from the picker and labels remain toggleable
-as chips.
+Meeting types use one searchable dropdown: its first row is a search/create
+field, followed by filtered existing types and a contextual create action when
+there is no exact match. Labels use the same search-or-create semantics with
+live suggestions from existing labels. Pressing Return reuses an exact match or
+creates and immediately assigns a new value; there is no separate **Add**
+button. Existing labels remain toggleable as chips.
 
 ### Saved Meeting Notes
 

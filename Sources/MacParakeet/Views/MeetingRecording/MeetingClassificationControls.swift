@@ -212,7 +212,6 @@ struct MeetingClassificationEditor: View {
     let transcription: Transcription
     @Bindable var viewModel: MeetingClassificationViewModel
     let onClose: () -> Void
-    @State private var newTypeName = ""
     @State private var newLabelName = ""
 
     private var classification: MeetingClassification {
@@ -253,19 +252,14 @@ struct MeetingClassificationEditor: View {
                         Text("Meeting type")
                             .font(DesignSystem.Typography.bodySmall.weight(.semibold))
 
-                        Picker("Meeting type", selection: meetingTypeBinding) {
-                            Text("Unclassified").tag(UUID?.none)
-                            if let assignedType = classification.meetingType,
-                                !viewModel.meetingTypes.contains(where: { $0.id == assignedType.id })
-                            {
-                                Text("\(assignedType.name) (Archived)").tag(Optional(assignedType.id))
+                        MeetingTypeSearchMenu(
+                            selectedType: classification.meetingType,
+                            meetingTypes: viewModel.meetingTypes,
+                            onSelect: { viewModel.setMeetingType($0, for: transcription.id) },
+                            onCreate: {
+                                viewModel.createMeetingType(named: $0, assigningTo: transcription.id)
                             }
-                            ForEach(viewModel.meetingTypes) { meetingType in
-                                Text(meetingType.name).tag(Optional(meetingType.id))
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        )
 
                         if !viewModel.meetingTypes.isEmpty {
                             Menu("Manage types") {
@@ -281,22 +275,13 @@ struct MeetingClassificationEditor: View {
                             .fixedSize()
                             .help("Archive types without changing historical meetings")
                         }
-
-                        TextField("New type — press Return", text: $newTypeName)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit(createType)
-                            .help("Press Return to create and assign this meeting type")
                     }
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Labels")
                             .font(DesignSystem.Typography.bodySmall.weight(.semibold))
 
-                        if displayedLabels.isEmpty {
-                            Text("Add a label to organize this meeting.")
-                                .font(DesignSystem.Typography.bodySmall)
-                                .foregroundStyle(DesignSystem.Colors.textTertiary)
-                        } else {
+                        if !displayedLabels.isEmpty {
                             FlowLayout(spacing: 7) {
                                 ForEach(Array(displayedLabels.enumerated()), id: \.element.id) { index, label in
                                     labelToken(label, index: index)
@@ -304,10 +289,57 @@ struct MeetingClassificationEditor: View {
                             }
                         }
 
-                        TextField("New label — press Return", text: $newLabelName)
+                        TextField("Search or create a label", text: $newLabelName)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit(createLabel)
-                            .help("Press Return to create and assign this label")
+                            .help("Choose an existing suggestion or press Return to create a label")
+
+                        if !trimmedLabelQuery.isEmpty {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(suggestedLabels) { label in
+                                    Button {
+                                        assignSuggestedLabel(label)
+                                    } label: {
+                                        HStack(spacing: 7) {
+                                            Image(systemName: classification.labels.contains(where: { $0.id == label.id })
+                                                ? "checkmark"
+                                                : "tag")
+                                                .font(.system(size: 9, weight: .semibold))
+                                                .frame(width: 10)
+                                            Text(label.name)
+                                                .lineLimit(1)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                        .padding(.horizontal, 7)
+                                        .padding(.vertical, 5)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+
+                                if exactLabelMatch == nil {
+                                    Button(action: createLabel) {
+                                        Label("Create “\(trimmedLabelQuery)”", systemImage: "plus")
+                                            .lineLimit(1)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .padding(.horizontal, 7)
+                                            .padding(.vertical, 5)
+                                    }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(DesignSystem.Colors.accent)
+                                }
+                            }
+                            .padding(5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(DesignSystem.Colors.surfaceElevated)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                            )
+                        }
                     }
 
                     if viewModel.updatingTranscriptionIDs.contains(transcription.id) {
@@ -337,17 +369,26 @@ struct MeetingClassificationEditor: View {
         }
     }
 
-    private var meetingTypeBinding: Binding<UUID?> {
-        Binding(
-            get: { classification.meetingType?.id },
-            set: { viewModel.setMeetingType($0, for: transcription.id) }
-        )
-    }
-
     private var displayedLabels: [MeetingLabel] {
         let availableIDs = Set(viewModel.meetingLabels.map(\.id))
         let assignedArchived = classification.labels.filter { !availableIDs.contains($0.id) }
         return viewModel.meetingLabels + assignedArchived
+    }
+
+    private var trimmedLabelQuery: String {
+        newLabelName.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var suggestedLabels: [MeetingLabel] {
+        Array(displayedLabels.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmedLabelQuery)
+        }.prefix(4))
+    }
+
+    private var exactLabelMatch: MeetingLabel? {
+        displayedLabels.first {
+            $0.name.compare(trimmedLabelQuery, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
     }
 
     private func labelToken(_ label: MeetingLabel, index: Int) -> some View {
@@ -383,16 +424,173 @@ struct MeetingClassificationEditor: View {
         }
     }
 
-    private func createType() {
-        let name = newTypeName
-        newTypeName = ""
-        viewModel.createMeetingType(named: name, assigningTo: transcription.id)
-    }
-
     private func createLabel() {
-        let name = newLabelName
+        if let exactLabelMatch {
+            assignSuggestedLabel(exactLabelMatch)
+            return
+        }
+        let name = trimmedLabelQuery
         newLabelName = ""
         viewModel.createMeetingLabel(named: name, assigningTo: transcription.id)
+    }
+
+    private func assignSuggestedLabel(_ label: MeetingLabel) {
+        if !classification.labels.contains(where: { $0.id == label.id }) {
+            viewModel.toggleLabel(label.id, for: transcription.id)
+        }
+        newLabelName = ""
+    }
+}
+
+private struct MeetingTypeSearchMenu: View {
+    let selectedType: MeetingType?
+    let meetingTypes: [MeetingType]
+    let onSelect: (UUID?) -> Void
+    let onCreate: (String) -> Void
+
+    @State private var isExpanded = false
+    @State private var query = ""
+    @FocusState private var searchFocused: Bool
+
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredTypes: [MeetingType] {
+        guard !trimmedQuery.isEmpty else { return meetingTypes }
+        return meetingTypes.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmedQuery)
+        }
+    }
+
+    private var exactMatch: MeetingType? {
+        meetingTypes.first {
+            $0.name.compare(trimmedQuery, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Button {
+                withAnimation(.easeOut(duration: 0.14)) {
+                    isExpanded.toggle()
+                }
+                if isExpanded {
+                    Task { @MainActor in searchFocused = true }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Text(selectedType?.name ?? "Unclassified")
+                        .foregroundStyle(DesignSystem.Colors.textPrimary)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(DesignSystem.Colors.textTertiary)
+                }
+                .padding(.horizontal, 10)
+                .frame(height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: 7)
+                        .fill(DesignSystem.Colors.surfaceElevated)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.6)
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Meeting type")
+            .accessibilityValue(selectedType?.name ?? "Unclassified")
+
+            if isExpanded {
+                VStack(alignment: .leading, spacing: 3) {
+                    TextField("Search or create a type", text: $query)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($searchFocused)
+                        .onSubmit(commitQuery)
+
+                    Divider()
+
+                    typeRow(name: "Unclassified", id: nil)
+
+                    ForEach(filteredTypes) { meetingType in
+                        typeRow(name: meetingType.name, id: meetingType.id)
+                    }
+
+                    if !trimmedQuery.isEmpty, exactMatch == nil {
+                        Divider()
+                        Button {
+                            createType()
+                        } label: {
+                            Label("Create “\(trimmedQuery)”", systemImage: "plus")
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 5)
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(DesignSystem.Colors.accent)
+                    }
+                }
+                .padding(6)
+                .background(
+                    RoundedRectangle(cornerRadius: 9)
+                        .fill(DesignSystem.Colors.surfaceElevated)
+                        .shadow(color: .black.opacity(0.16), radius: 8, y: 3)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9)
+                        .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+    }
+
+    private func typeRow(name: String, id: UUID?) -> some View {
+        Button {
+            onSelect(id)
+            collapse()
+        } label: {
+            HStack(spacing: 7) {
+                if selectedType?.id == id {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .semibold))
+                        .frame(width: 10)
+                } else {
+                    Color.clear.frame(width: 10, height: 10)
+                }
+                Text(name)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(DesignSystem.Colors.textPrimary)
+            .padding(.horizontal, 7)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func commitQuery() {
+        if let exactMatch {
+            onSelect(exactMatch.id)
+            collapse()
+        } else if !trimmedQuery.isEmpty {
+            createType()
+        }
+    }
+
+    private func createType() {
+        onCreate(trimmedQuery)
+        collapse()
+    }
+
+    private func collapse() {
+        isExpanded = false
+        query = ""
+        searchFocused = false
     }
 }
 
