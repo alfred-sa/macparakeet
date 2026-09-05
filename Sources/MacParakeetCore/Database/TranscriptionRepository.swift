@@ -19,6 +19,8 @@ public protocol TranscriptionRepositoryProtocol: Sendable {
     func updateTitleOverride(id: UUID, titleOverride: String?) throws
     func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws
     func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws
+    @discardableResult
+    func updateUserNotes(id: UUID, userNotes: String?) throws -> Bool
     func updateFilePath(id: UUID, filePath: String?) throws
     func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws
     func clearStoredAudioPathsForURLTranscriptions() throws
@@ -114,6 +116,14 @@ extension TranscriptionRepositoryProtocol {
     public func updateTitleOverride(id: UUID, titleOverride: String?) throws {}
     public func updateChatMessages(id: UUID, chatMessages: [ChatMessage]?) throws {}
     public func updateSpeakers(id: UUID, speakers: [SpeakerInfo]?) throws {}
+    @discardableResult
+    public func updateUserNotes(id: UUID, userNotes: String?) throws -> Bool {
+        guard var transcription = try fetch(id: id) else { return false }
+        transcription.userNotes = userNotes
+        transcription.updatedAt = Date()
+        try save(transcription)
+        return true
+    }
     public func updateFilePath(id: UUID, filePath: String?) throws {}
     public func updateMeetingArtifactFolderPath(id: UUID, folderPath: String?) throws {}
     public func updateFavorite(id: UUID, isFavorite: Bool) throws {}
@@ -539,12 +549,14 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
         }
     }
 
-    public func updateUserNotes(id: UUID, userNotes: String?) throws {
+    @discardableResult
+    public func updateUserNotes(id: UUID, userNotes: String?) throws -> Bool {
         try dbQueue.write { db in
-            guard var transcription = try Transcription.fetchOne(db, key: id) else { return }
+            guard var transcription = try Transcription.fetchOne(db, key: id) else { return false }
             transcription.userNotes = userNotes
             transcription.updatedAt = Date()
             try transcription.update(db)
+            return true
         }
     }
 
