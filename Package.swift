@@ -4,8 +4,24 @@ import PackageDescription
 import Foundation
 
 let skipWhisperKit = ProcessInfo.processInfo.environment["MACPARAKEET_SKIP_WHISPERKIT"] == "1"
+// The existing no-WhisperKit mode is the repository's first-party Swift 6
+// compatibility build. Omit the Swift 5-only Markdown dependency graph there
+// as well; normal release, concurrency, and test builds still compile it.
+let skipStreamingMarkdown = skipWhisperKit
 let enableMLXLocalLLM = ProcessInfo.processInfo.environment["MACPARAKEET_ENABLE_MLX_LOCAL_LLM"] == "1"
 let disableDiscover = ProcessInfo.processInfo.environment["MACPARAKEET_DISABLE_DISCOVER"] == "1"
+
+let streamingMarkdownPackageDependencies: [Package.Dependency] = skipStreamingMarkdown ? [] : [
+    // Shared SwiftUI renderer for static and streaming LLM Markdown output.
+    // v0.7.0 transitively pins two dependencies by revision, so SwiftPM rejects
+    // the stable-version requirement. The fork removes one trailing argument
+    // comma that Swift 6.0 / Xcode 16.1 cannot parse; keep this immutable pin
+    // until upstream supports the repository's CI toolchain.
+    .package(
+        url: "https://github.com/alfred-sa/SwiftStreamingMarkdown",
+        revision: "17507bfe99e90b89f5cae65b78b92dade91e0d30"
+    )
+]
 
 let packageDependencies: [Package.Dependency] = [
     // GRDB for SQLite (dictation history + transcription records)
@@ -18,15 +34,6 @@ let packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     // Sparkle for auto-updates (non-App Store distribution)
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
-    // Shared SwiftUI renderer for static and streaming LLM Markdown output.
-    // v0.7.0 transitively pins two dependencies by revision, so SwiftPM rejects
-    // the stable-version requirement. The fork removes one trailing argument
-    // comma that Swift 6.0 / Xcode 16.1 cannot parse; keep this immutable pin
-    // until upstream supports the repository's CI toolchain.
-    .package(
-        url: "https://github.com/alfred-sa/SwiftStreamingMarkdown",
-        revision: "17507bfe99e90b89f5cae65b78b92dade91e0d30"
-    ),
     // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
     .package(url: "https://github.com/ibireme/yyjson.git", exact: "0.12.0"),
     // WhisperKit for multilingual STT fallback (Korean + 95 other languages).
@@ -34,7 +41,7 @@ let packageDependencies: [Package.Dependency] = [
     // as a target dependency for the first-party Swift 6 syntax/concurrency
     // compile check without removing its lockfile pins.
     .package(url: "https://github.com/argmaxinc/argmax-oss-swift", exact: "0.18.0")
-] + (enableMLXLocalLLM ? [
+] + streamingMarkdownPackageDependencies + (enableMLXLocalLLM ? [
     // Opt-in only. mlx-swift-lm currently needs Swift tools 6.1 and Xcode-built
     // Metal shaders, so plain `swift build` / `swift test` / CI must not resolve it.
     .package(url: "https://github.com/ml-explore/mlx-swift-lm", exact: "3.31.4"),
@@ -101,12 +108,15 @@ let coreTargetSwiftSettings: [SwiftSetting] = whisperKitSwiftSettings + discover
 let testTargetSwiftSettings: [SwiftSetting] =
     whisperKitSwiftSettings + mlxLocalLLMSwiftSettings + discoverSwiftSettings
 
+let streamingMarkdownTargetDependencies: [Target.Dependency] = skipStreamingMarkdown ? [] : [
+    .product(name: "SwiftStreamingMarkdown", package: "SwiftStreamingMarkdown")
+]
+
 let appDependencies: [Target.Dependency] = [
     "MacParakeetCore",
     "MacParakeetViewModels",
     .product(name: "Sparkle", package: "Sparkle"),
-    .product(name: "SwiftStreamingMarkdown", package: "SwiftStreamingMarkdown")
-] + (enableMLXLocalLLM ? [
+] + streamingMarkdownTargetDependencies + (enableMLXLocalLLM ? [
     "MacParakeetLocalLLM"
 ] : [])
 
@@ -115,8 +125,7 @@ let appTestDependencies: [Target.Dependency] = [
     "MacParakeetCore",
     "MacParakeetViewModels",
     "MacParakeetObjCShims",
-    .product(name: "SwiftStreamingMarkdown", package: "SwiftStreamingMarkdown")
-] + (enableMLXLocalLLM ? [
+] + streamingMarkdownTargetDependencies + (enableMLXLocalLLM ? [
     "MacParakeetLocalLLM"
 ] : [])
 

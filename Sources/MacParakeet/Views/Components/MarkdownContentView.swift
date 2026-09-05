@@ -1,7 +1,10 @@
 import AppKit
+#if canImport(SwiftStreamingMarkdown)
 import SwiftStreamingMarkdown
+#endif
 import SwiftUI
 
+#if canImport(SwiftStreamingMarkdown)
 /// Canonical renderer for LLM-authored Markdown throughout the app.
 ///
 /// The source string remains the artifact of record; this view only changes its
@@ -221,3 +224,27 @@ private final class MarkdownContentInteractionListener: MarkdownListener {
     func onContextMenuTap(id _: String, selectedContent _: String) async {}
     func onImageTap(image _: MarkdownImage) async {}
 }
+#else
+/// Plain-text compile-time fallback used only by the first-party Swift 6 gate
+/// while SwiftStreamingMarkdown's dependency graph remains Swift 5-only.
+struct MarkdownContentView: View {
+    let content: String
+    let font: Font
+
+    init(
+        _ content: String,
+        font: Font = DesignSystem.Typography.body,
+        isStreaming _: Bool = false
+    ) {
+        self.content = content
+        self.font = font
+    }
+
+    var body: some View {
+        Text(content)
+            .font(font)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .textSelection(.enabled)
+    }
+}
+#endif
