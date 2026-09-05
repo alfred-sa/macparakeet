@@ -145,9 +145,9 @@
     {
       "identity" : "swiftstreamingmarkdown",
       "kind" : "remoteSourceControl",
-      "location" : "https://github.com/microsoft/SwiftStreamingMarkdown",
+      "location" : "https://github.com/alfred-sa/SwiftStreamingMarkdown",
       "state" : {
-        "revision" : "5f7c04e0558df6146f90d482edb62cb456986bda"
+        "revision" : "17507bfe99e90b89f5cae65b78b92dade91e0d30"
       }
     },
     {

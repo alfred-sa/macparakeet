@@ -20,10 +20,12 @@ let packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
     // Shared SwiftUI renderer for static and streaming LLM Markdown output.
     // v0.7.0 transitively pins two dependencies by revision, so SwiftPM rejects
-    // the stable-version requirement. Pin the tag's immutable commit instead.
+    // the stable-version requirement. The fork removes one trailing argument
+    // comma that Swift 6.0 / Xcode 16.1 cannot parse; keep this immutable pin
+    // until upstream supports the repository's CI toolchain.
     .package(
-        url: "https://github.com/microsoft/SwiftStreamingMarkdown",
-        revision: "5f7c04e0558df6146f90d482edb62cb456986bda"
+        url: "https://github.com/alfred-sa/SwiftStreamingMarkdown",
+        revision: "17507bfe99e90b89f5cae65b78b92dade91e0d30"
     ),
     // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
     .package(url: "https://github.com/ibireme/yyjson.git", exact: "0.12.0"),
