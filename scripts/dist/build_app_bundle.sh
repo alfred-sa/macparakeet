@@ -262,30 +262,8 @@ fi
 
 copy_cli_binary
 
-verify_discover_bundle_mode() {
-  local discover_resource
-  local bundled_binary
-  discover_resource="$(find "$RESOURCES_DIR" -name 'discover-fallback.json' -print -quit 2>/dev/null || true)"
-
-  if [[ "${MACPARAKEET_DISABLE_DISCOVER:-0}" == "1" ]]; then
-    if [[ -n "$discover_resource" ]]; then
-      echo "Discover-disabled build unexpectedly contains: $discover_resource" >&2
-      exit 1
-    fi
-    for bundled_binary in "$MACOS_DIR/$APP_NAME" "$MACOS_DIR/macparakeet-cli"; do
-      if [[ -f "$bundled_binary" ]] && strings "$bundled_binary" | grep -Eq '/api/discover(\.json|-thoughts)|MACPARAKEET_DISCOVER_'; then
-        echo "Discover-disabled build unexpectedly contains Discover endpoints or overrides: $bundled_binary" >&2
-        exit 1
-      fi
-    done
-    echo "Verified Discover is absent from the app bundle."
-  elif [[ -z "$discover_resource" ]]; then
-    echo "Discover-enabled build is missing discover-fallback.json." >&2
-    exit 1
-  fi
-}
-
-verify_discover_bundle_mode
+bash "$ROOT_DIR/scripts/dist/verify_discover_bundle_mode.sh" \
+  "$APP_DIR" "${MACPARAKEET_DISABLE_DISCOVER:-0}" "$APP_NAME"
 
 # Bundle FFmpeg (required at runtime for media demux/conversion).
 #
