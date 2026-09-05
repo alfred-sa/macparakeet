@@ -18,6 +18,13 @@ let packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/apple/swift-argument-parser", from: "1.3.0"),
     // Sparkle for auto-updates (non-App Store distribution)
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0"),
+    // Shared SwiftUI renderer for static and streaming LLM Markdown output.
+    // v0.7.0 transitively pins two dependencies by revision, so SwiftPM rejects
+    // the stable-version requirement. Pin the tag's immutable commit instead.
+    .package(
+        url: "https://github.com/microsoft/SwiftStreamingMarkdown",
+        revision: "5f7c04e0558df6146f90d482edb62cb456986bda"
+    ),
     // FluidAudio's Swift module exposes yyjson under current Xcode/Swift.
     .package(url: "https://github.com/ibireme/yyjson.git", exact: "0.12.0"),
     // WhisperKit for multilingual STT fallback (Korean + 95 other languages).
@@ -95,7 +102,8 @@ let testTargetSwiftSettings: [SwiftSetting] =
 let appDependencies: [Target.Dependency] = [
     "MacParakeetCore",
     "MacParakeetViewModels",
-    .product(name: "Sparkle", package: "Sparkle")
+    .product(name: "Sparkle", package: "Sparkle"),
+    .product(name: "SwiftStreamingMarkdown", package: "SwiftStreamingMarkdown")
 ] + (enableMLXLocalLLM ? [
     "MacParakeetLocalLLM"
 ] : [])
@@ -104,7 +112,8 @@ let appTestDependencies: [Target.Dependency] = [
     "MacParakeet",
     "MacParakeetCore",
     "MacParakeetViewModels",
-    "MacParakeetObjCShims"
+    "MacParakeetObjCShims",
+    .product(name: "SwiftStreamingMarkdown", package: "SwiftStreamingMarkdown")
 ] + (enableMLXLocalLLM ? [
     "MacParakeetLocalLLM"
 ] : [])
