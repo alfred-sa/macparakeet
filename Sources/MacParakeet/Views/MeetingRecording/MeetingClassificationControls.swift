@@ -91,6 +91,8 @@ struct MeetingClassificationBadges: View {
 
 struct MeetingClassificationFilterBar: View {
     @Bindable var libraryViewModel: TranscriptionLibraryViewModel
+    @State private var showingTypeFilters = false
+    @State private var showingLabelFilters = false
 
     private var classificationViewModel: MeetingClassificationViewModel {
         libraryViewModel.meetingClassificationViewModel
@@ -118,65 +120,37 @@ struct MeetingClassificationFilterBar: View {
     }
 
     private var typeMenu: some View {
-        Menu {
-            Button {
-                libraryViewModel.setUnclassifiedMeetingsFilter(
-                    !libraryViewModel.unclassifiedMeetingsOnly
-                )
-            } label: {
-                filterMenuLabel(
-                    "Unclassified",
-                    selected: libraryViewModel.unclassifiedMeetingsOnly
-                )
-            }
-
-            if !classificationViewModel.meetingTypes.isEmpty {
-                Divider()
-                ForEach(classificationViewModel.meetingTypes) { meetingType in
-                    Button {
-                        libraryViewModel.toggleMeetingTypeFilter(meetingType.id)
-                    } label: {
-                        filterMenuLabel(
-                            meetingType.name,
-                            selected: libraryViewModel.selectedMeetingTypeIDs.contains(meetingType.id)
-                        )
-                    }
-                }
-            }
+        Button {
+            showingLabelFilters = false
+            showingTypeFilters.toggle()
         } label: {
             filterButtonLabel(
                 title: typeFilterTitle,
                 icon: "person.2"
             )
         }
-        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
         .fixedSize()
+        .popover(isPresented: $showingTypeFilters, arrowEdge: .bottom) {
+            MeetingTypeFilterPopover(libraryViewModel: libraryViewModel)
+        }
     }
 
     private var labelMenu: some View {
-        Menu {
-            if classificationViewModel.meetingLabels.isEmpty {
-                Text("No labels yet")
-            } else {
-                ForEach(classificationViewModel.meetingLabels) { label in
-                    Button {
-                        libraryViewModel.toggleMeetingLabelFilter(label.id)
-                    } label: {
-                        filterMenuLabel(
-                            label.name,
-                            selected: libraryViewModel.selectedMeetingLabelIDs.contains(label.id)
-                        )
-                    }
-                }
-            }
+        Button {
+            showingTypeFilters = false
+            showingLabelFilters.toggle()
         } label: {
             filterButtonLabel(
                 title: labelFilterTitle,
                 icon: "tag"
             )
         }
-        .menuStyle(.borderlessButton)
+        .buttonStyle(.plain)
         .fixedSize()
+        .popover(isPresented: $showingLabelFilters, arrowEdge: .bottom) {
+            MeetingLabelFilterPopover(libraryViewModel: libraryViewModel)
+        }
     }
 
     private var typeFilterTitle: String {
@@ -203,9 +177,159 @@ struct MeetingClassificationFilterBar: View {
             )
     }
 
-    private func filterMenuLabel(_ text: String, selected: Bool) -> some View {
-        Label(text, systemImage: selected ? "checkmark" : "circle")
+}
+
+private struct MeetingTypeFilterPopover: View {
+    @Bindable var libraryViewModel: TranscriptionLibraryViewModel
+    @State private var query = ""
+
+    private var types: [MeetingType] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return libraryViewModel.meetingClassificationViewModel.meetingTypes
+        }
+        return libraryViewModel.meetingClassificationViewModel.meetingTypes.filter {
+            $0.name.localizedCaseInsensitiveContains(trimmed)
+        }
     }
+
+    var body: some View {
+        filterPopoverContainer(searchText: $query, prompt: "Search meeting types") {
+            FlowLayout(spacing: 7) {
+                filterChip(
+                    name: "Unclassified",
+                    icon: "questionmark",
+                    tint: DesignSystem.Colors.textSecondary,
+                    selected: libraryViewModel.unclassifiedMeetingsOnly
+                ) {
+                    libraryViewModel.setUnclassifiedMeetingsFilter(
+                        !libraryViewModel.unclassifiedMeetingsOnly
+                    )
+                }
+
+                ForEach(Array(types.enumerated()), id: \.element.id) { index, meetingType in
+                    filterChip(
+                        name: meetingType.name,
+                        icon: meetingType.iconName,
+                        tint: MeetingClassificationTint.color(
+                            for: meetingType.colorToken,
+                            fallback: index
+                        ),
+                        selected: libraryViewModel.selectedMeetingTypeIDs.contains(meetingType.id)
+                    ) {
+                        libraryViewModel.toggleMeetingTypeFilter(meetingType.id)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct MeetingLabelFilterPopover: View {
+    @Bindable var libraryViewModel: TranscriptionLibraryViewModel
+    @State private var query = ""
+
+    private var labels: [MeetingLabel] {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        let allLabels = libraryViewModel.meetingClassificationViewModel.meetingLabels
+        guard !trimmed.isEmpty else { return allLabels }
+        return allLabels.filter { $0.name.localizedCaseInsensitiveContains(trimmed) }
+    }
+
+    var body: some View {
+        filterPopoverContainer(searchText: $query, prompt: "Search labels") {
+            if labels.isEmpty {
+                Text("No matching labels")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, DesignSystem.Spacing.sm)
+            } else {
+                FlowLayout(spacing: 7) {
+                    ForEach(Array(labels.enumerated()), id: \.element.id) { index, label in
+                        filterChip(
+                            name: label.name,
+                            icon: "tag.fill",
+                            tint: MeetingClassificationTint.color(
+                                for: label.colorToken,
+                                fallback: index + 1
+                            ),
+                            selected: libraryViewModel.selectedMeetingLabelIDs.contains(label.id)
+                        ) {
+                            libraryViewModel.toggleMeetingLabelFilter(label.id)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private func filterPopoverContainer<Content: View>(
+    searchText: Binding<String>,
+    prompt: String,
+    @ViewBuilder content: () -> Content
+) -> some View {
+    VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(DesignSystem.Colors.textTertiary)
+            TextField(prompt, text: searchText)
+                .textFieldStyle(.plain)
+        }
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(DesignSystem.Colors.surfaceElevated)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.6)
+        )
+
+        content()
+    }
+    .padding(DesignSystem.Spacing.md)
+    .frame(width: 330)
+    .background(DesignSystem.Colors.contentBackground)
+}
+
+private func filterChip(
+    name: String,
+    icon: String?,
+    tint: Color,
+    selected: Bool,
+    action: @escaping () -> Void
+) -> some View {
+    Button(action: action) {
+        HStack(spacing: 5) {
+            if selected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 9, weight: .bold))
+            } else if let icon {
+                Image(systemName: icon)
+                    .font(.system(size: 9, weight: .semibold))
+            }
+            Text(name)
+                .lineLimit(1)
+        }
+        .font(DesignSystem.Typography.caption.weight(.medium))
+        .foregroundStyle(selected ? tint : DesignSystem.Colors.textSecondary)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 6)
+        .background(
+            Capsule().fill(selected ? tint.opacity(0.16) : tint.opacity(0.07))
+        )
+        .overlay(
+            Capsule().strokeBorder(
+                selected ? tint.opacity(0.55) : tint.opacity(0.24),
+                lineWidth: selected ? 1 : 0.6
+            )
+        )
+    }
+    .buttonStyle(.plain)
+    .accessibilityValue(selected ? "Selected" : "Not selected")
 }
 
 struct MeetingClassificationEditor: View {
@@ -235,38 +359,42 @@ struct MeetingClassificationEditor: View {
                             }
                         )
 
-                        if !viewModel.meetingTypes.isEmpty {
-                            Menu("Manage types") {
-                                ForEach(viewModel.meetingTypes) { meetingType in
-                                    Button(role: .destructive) {
-                                        viewModel.archiveMeetingType(meetingType.id)
-                                    } label: {
-                                        Label("Archive \(meetingType.name)", systemImage: "archivebox")
-                                    }
-                                }
-                            }
-                            .menuStyle(.borderlessButton)
-                            .fixedSize()
-                            .help("Archive types without changing historical meetings")
-                        }
                     }
 
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                         Text("Labels")
                             .font(DesignSystem.Typography.bodySmall.weight(.semibold))
 
-                        if !displayedLabels.isEmpty {
-                            FlowLayout(spacing: 7) {
-                                ForEach(Array(displayedLabels.enumerated()), id: \.element.id) { index, label in
-                                    labelToken(label, index: index)
+                        HStack(spacing: 6) {
+                            if !classification.labels.isEmpty {
+                                ScrollView(.horizontal) {
+                                    HStack(spacing: 5) {
+                                        ForEach(Array(classification.labels.enumerated()), id: \.element.id) {
+                                            index, label in
+                                            selectedLabelToken(label, index: index)
+                                        }
+                                    }
                                 }
+                                .scrollIndicators(.hidden)
+                                .frame(maxWidth: .infinity)
                             }
-                        }
 
-                        TextField("Search or create a label", text: $newLabelName)
-                            .textFieldStyle(.roundedBorder)
-                            .onSubmit(createLabel)
-                            .help("Choose an existing suggestion or press Return to create a label")
+                            TextField("Search or create a label", text: $newLabelName)
+                                .textFieldStyle(.plain)
+                                .frame(minWidth: 125, idealWidth: 155)
+                                .onSubmit(createLabel)
+                                .help("Choose an existing suggestion or press Return to create a label")
+                        }
+                        .padding(.horizontal, 8)
+                        .frame(height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: 7)
+                                .fill(DesignSystem.Colors.surfaceElevated)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 7)
+                                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.6)
+                        )
 
                         if !trimmedLabelQuery.isEmpty {
                             VStack(alignment: .leading, spacing: 2) {
@@ -275,11 +403,13 @@ struct MeetingClassificationEditor: View {
                                         assignSuggestedLabel(label)
                                     } label: {
                                         HStack(spacing: 7) {
-                                            Image(systemName: classification.labels.contains(where: { $0.id == label.id })
-                                                ? "checkmark"
-                                                : "tag")
-                                                .font(.system(size: 9, weight: .semibold))
-                                                .frame(width: 10)
+                                            Image(
+                                                systemName: classification.labels.contains(where: { $0.id == label.id })
+                                                    ? "checkmark"
+                                                    : "tag"
+                                            )
+                                            .font(.system(size: 9, weight: .semibold))
+                                            .frame(width: 10)
                                             Text(label.name)
                                                 .lineLimit(1)
                                             Spacer(minLength: 0)
@@ -354,9 +484,10 @@ struct MeetingClassificationEditor: View {
     }
 
     private var suggestedLabels: [MeetingLabel] {
-        Array(displayedLabels.filter {
-            $0.name.localizedCaseInsensitiveContains(trimmedLabelQuery)
-        }.prefix(4))
+        Array(
+            displayedLabels.filter {
+                $0.name.localizedCaseInsensitiveContains(trimmedLabelQuery)
+            }.prefix(4))
     }
 
     private var exactLabelMatch: MeetingLabel? {
@@ -365,37 +496,29 @@ struct MeetingClassificationEditor: View {
         }
     }
 
-    private func labelToken(_ label: MeetingLabel, index: Int) -> some View {
-        let selected = classification.labels.contains { $0.id == label.id }
+    private func selectedLabelToken(_ label: MeetingLabel, index: Int) -> some View {
         let tint = MeetingClassificationTint.color(for: label.colorToken, fallback: index + 1)
         return Button {
             viewModel.toggleLabel(label.id, for: transcription.id)
         } label: {
             HStack(spacing: 5) {
-                if selected {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 9, weight: .bold))
-                }
                 Text(label.name)
+                    .lineLimit(1)
+                Image(systemName: "xmark")
+                    .font(.system(size: 8, weight: .bold))
             }
             .font(DesignSystem.Typography.caption.weight(.medium))
-            .foregroundStyle(selected ? tint : DesignSystem.Colors.textSecondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(selected ? tint.opacity(0.13) : DesignSystem.Colors.surfaceElevated))
-            .overlay(Capsule().strokeBorder(selected ? tint.opacity(0.35) : DesignSystem.Colors.border, lineWidth: 0.6))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(tint.opacity(0.13)))
+            .overlay(Capsule().strokeBorder(tint.opacity(0.35), lineWidth: 0.6))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label.name)
-        .accessibilityValue(selected ? "Assigned" : "Not assigned")
-        .accessibilityHint(selected ? "Removes this label" : "Assigns this label")
-        .contextMenu {
-            Button(role: .destructive) {
-                viewModel.archiveMeetingLabel(label.id)
-            } label: {
-                Label("Archive Label", systemImage: "archivebox")
-            }
-        }
+        .accessibilityValue("Assigned")
+        .accessibilityHint("Removes this label")
+        .fixedSize()
     }
 
     private func createLabel() {
@@ -413,6 +536,95 @@ struct MeetingClassificationEditor: View {
             viewModel.toggleLabel(label.id, for: transcription.id)
         }
         newLabelName = ""
+    }
+}
+
+struct MeetingTypesManagementCard: View {
+    @Bindable var viewModel: MeetingClassificationViewModel
+    @State private var newTypeName = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
+            HStack(spacing: DesignSystem.Spacing.sm) {
+                Label("Meeting types", systemImage: "person.2")
+                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+                    .foregroundStyle(DesignSystem.Colors.textPrimary)
+
+                Spacer(minLength: 0)
+
+                Text("\(viewModel.meetingTypes.count)")
+                    .font(DesignSystem.Typography.micro.monospacedDigit())
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+            }
+
+            TextField("New type — press Return", text: $newTypeName)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit(createType)
+                .help("Press Return to create this meeting type")
+
+            if viewModel.meetingTypes.isEmpty {
+                Text("No meeting types yet.")
+                    .font(DesignSystem.Typography.caption)
+                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(viewModel.meetingTypes.enumerated()), id: \.element.id) { index, meetingType in
+                        HStack(spacing: DesignSystem.Spacing.sm) {
+                            Circle()
+                                .fill(
+                                    MeetingClassificationTint.color(
+                                        for: meetingType.colorToken,
+                                        fallback: index
+                                    )
+                                )
+                                .frame(width: 7, height: 7)
+
+                            Text(meetingType.name)
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundStyle(DesignSystem.Colors.textPrimary)
+                                .lineLimit(1)
+
+                            Spacer(minLength: 0)
+
+                            Button {
+                                viewModel.archiveMeetingType(meetingType.id)
+                            } label: {
+                                Image(systemName: "archivebox")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(DesignSystem.Colors.textTertiary)
+                                    .frame(width: 24, height: 24)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Archive \(meetingType.name)")
+                            .accessibilityLabel("Archive \(meetingType.name)")
+                        }
+                        .padding(.vertical, 6)
+
+                        if index < viewModel.meetingTypes.count - 1 {
+                            Divider()
+                        }
+                    }
+                }
+            }
+        }
+        .padding(DesignSystem.Spacing.md)
+        .background(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
+                .fill(DesignSystem.Colors.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DesignSystem.Layout.cardCornerRadius)
+                .strokeBorder(DesignSystem.Colors.border, lineWidth: 0.5)
+        )
+        .onAppear {
+            viewModel.loadOptions()
+        }
+    }
+
+    private func createType() {
+        let name = newTypeName
+        newTypeName = ""
+        viewModel.createMeetingType(named: name)
     }
 }
 

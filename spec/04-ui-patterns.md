@@ -164,10 +164,19 @@ panel, classification stays attached to saved meetings through the popover.
 
 Meeting types use one searchable dropdown: its first row is a search/create
 field, followed by filtered existing types and a contextual create action when
-there is no exact match. Labels use the same search-or-create semantics with
-live suggestions from existing labels. Pressing Return reuses an exact match or
+there is no exact match. Administrative actions do not appear in this contextual
+popover. Library's Meetings view owns a dedicated **Meeting types** card for
+creating types by pressing Return and archiving active types. Library's type
+and label filters open compact popovers with an integrated search field. Their
+options use colored, wrapping chips instead of vertical menu rows, preserving
+the meeting type and label colors and allowing multi-selection at a glance.
+
+Labels use the same search-or-create semantics with live suggestions from
+existing labels. Assigned labels render as removable
+tokens on the same row as the input; the token area scrolls horizontally so the
+control stays one line tall. Pressing Return reuses an exact match or
 creates and immediately assigns a new value; there is no separate **Add**
-button. Existing labels remain toggleable as chips.
+button.
 
 ### Saved Meeting Notes
 

@@ -315,6 +315,11 @@ struct TranscriptionLibraryView: View {
     private var meetingsList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
+                MeetingTypesManagementCard(viewModel: viewModel.meetingClassificationViewModel)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.top, DesignSystem.Spacing.md)
+                    .padding(.bottom, DesignSystem.Spacing.md)
+
                 ForEach(viewModel.groupedTranscriptions, id: \.group) { section in
                     MeetingDateGroupHeader(group: section.group)
                     ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
