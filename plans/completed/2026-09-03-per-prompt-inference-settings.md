@@ -1,7 +1,8 @@
 # Per-Prompt LLM Inference Settings — Implementation Plan
 
-> Status: **PR OPEN** — implemented and locally verified on 2026-09-03;
-> conditional reasoning effort added on 2026-09-05.
+> Status: **COMPLETED / ARCHIVED 2026-09-05** — implemented and locally
+> verified on 2026-09-03; conditional reasoning effort added on 2026-09-05;
+> merged as [PR #2](https://github.com/alfred-sa/macparakeet/pull/2).
 
 Governing draft spec:
 [`spec/14-per-prompt-inference-settings.md`](../../spec/14-per-prompt-inference-settings.md)

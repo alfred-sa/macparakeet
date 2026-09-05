@@ -1,8 +1,8 @@
 # Per-Prompt LLM Inference Settings
 
-> Status: **IMPLEMENTED / PR OPEN** — the default-semantics
+> Status: **IMPLEMENTED / MERGED** — the default-semantics
 > decision and conditional reasoning-effort extension are accepted in
-> [`plans/active/2026-09-03-per-prompt-inference-settings.md`](../plans/active/2026-09-03-per-prompt-inference-settings.md).
+> [`plans/completed/2026-09-03-per-prompt-inference-settings.md`](../plans/completed/2026-09-03-per-prompt-inference-settings.md).
 
 Target: MacParakeet
 

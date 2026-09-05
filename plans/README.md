@@ -8,6 +8,7 @@
 >
 > Layout: `active/` = open or partially-open work · `completed/` = shipped
 > (kept as the record, never deleted) · `deferred/` = parked.
+> Completed-plan cleanup last run **2026-09-05**.
 > Per-subsystem rules live in `Sources/MacParakeetCore/<subsystem>/README.md`.
 > A second plan set with YAML frontmatter lives in `docs/plans/` (the
 > `/ce-plan` convention; some entries — e.g. ADR-024 Phase C rich-meeting
@@ -30,7 +31,6 @@
 
 | Plan | Title | Status | Priority | What's left |
 |------|-------|--------|----------|-------------|
-| [2026-09-03-per-prompt-inference-settings](active/2026-09-03-per-prompt-inference-settings.md) | Per-prompt LLM inference settings | **PR OPEN** | P2 | Implemented and locally verified on PR #2: typed settings, provider filtering, requested/effective snapshots, UI and additive CLI/artifact contracts. Archive after merge. |
 | [2026-07-20-dapt-export](active/2026-07-20-dapt-export.md) | DAPT original-transcript export (#850) | **PR OPEN** | P1 | Implementation, external W3C/BBC validation, full-suite gate, and fresh-eye remediation are complete on PR #854. Exact-head merge-readiness evidence is tracked on the PR; archive after merge. |
 | [2026-07-03-speaker-voiceprints](active/2026-07-03-speaker-voiceprints.md) | Persistent speaker profiles (voiceprints) | **PROPOSED** | P2 | Research-backed plan for issue #662: enroll a speaker once (via the existing rename flow), auto-suggest their name in future diarized recordings by matching FluidAudio's per-speaker 256-d embeddings (already free in every offline diarization) against a local GRDB profile store. Opt-in, on-device, suggestions-require-confirmation; embeddings stored only for explicitly enrolled speakers (ambient "appeared in N recordings" detection deferred to Phase 3 as its own privacy decision). 5 research reports in `docs/research/2026-07-03-speaker-voiceprints/`. Next: Daniel's 4 open-question calls, then **Phase 0 calibration spike** (intra/inter-speaker distance separation on the retained meeting corpus → τ + margin + GO/NO-GO) before any product code. Concretizes the speaker-memory layer of `docs/plans/2026-06-14-002`. |
 | [2026-07-03-parakeet-custom-vocabulary](active/2026-07-03-parakeet-custom-vocabulary.md) | Parakeet custom vocabulary (names/jargon boosting) | **TODO** | P2 | ADR-026 roadmap #1, sequenced after registry Phase A. FluidAudio 0.15.4 (pinned) already ships the API (`CustomVocabularyContext` via `SlidingWindowAsrManager`). Phase 0: choose the integration seam for our TDT paths + term-recall eval with WER-regression bound. MUST reuse existing `CustomWord`/Vocabulary feature (no second store). Daniel decision gate after Phase 0. |
@@ -89,6 +89,11 @@
 
 - No hard blockers between active plans. Soft sequencing: keep meeting-audio changes behind the measurement harness, and prefer the remaining audio/STT regression tests before another broad capture/STT change.
 - The two engine-switch plans are a pair: `ux-revamp` (Stage A, partial) is the parent; `stage-b` is its on-hold continuation. Both gate on the A3 cold-switch telemetry before the reactive flow is greenlit.
+
+## Recently archived → `completed/` (2026-09-05)
+
+- **2026-09-03-per-prompt-inference-settings** → merged as fork PR #2 after
+  full local verification.
 
 ## Recently archived → `completed/` (2026-07-18)
 
