@@ -174,13 +174,15 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
                                 sawSentinel: true,
                                 yieldedAnyContent: yieldedAnyContent
                             )
-                            continuation.yield(.completed(LLMStreamTerminal(
-                                provider: config.id.rawValue,
-                                model: model,
-                                usage: usage,
-                                stopReason: stopReason,
-                                effectiveSettings: options.effectiveInferenceSettings
-                            )))
+                            continuation.yield(
+                                .completed(
+                                    LLMStreamTerminal(
+                                        provider: config.id.rawValue,
+                                        model: model,
+                                        usage: usage,
+                                        stopReason: stopReason,
+                                        effectiveSettings: options.effectiveInferenceSettings
+                                    )))
                             continuation.finish()
                             return
                         case .error(let message):
@@ -194,13 +196,15 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
                         sawSentinel: sawDone,
                         yieldedAnyContent: yieldedAnyContent
                     )
-                    continuation.yield(.completed(LLMStreamTerminal(
-                        provider: config.id.rawValue,
-                        model: model,
-                        usage: usage,
-                        stopReason: stopReason,
-                        effectiveSettings: options.effectiveInferenceSettings
-                    )))
+                    continuation.yield(
+                        .completed(
+                            LLMStreamTerminal(
+                                provider: config.id.rawValue,
+                                model: model,
+                                usage: usage,
+                                stopReason: stopReason,
+                                effectiveSettings: options.effectiveInferenceSettings
+                            )))
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -241,7 +245,8 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
         }
 
         if config.id.modelListEndpoint == .gemini,
-           let modelsResponse = try? JSONDecoder().decode(GeminiModelsListResponse.self, from: data) {
+            let modelsResponse = try? JSONDecoder().decode(GeminiModelsListResponse.self, from: data)
+        {
             return modelsResponse.models
                 .filter(LLMHTTPModelCatalog.isGeminiTextLLMModel)
                 .map { entry in
@@ -336,7 +341,10 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
             max_completion_tokens: maxCompletionTokens,
             seed: supportsCustomOpenAICompatibleOptions ? options.seed : nil,
             chat_template_kwargs: supportsCustomOpenAICompatibleOptions
-                ? Self.chatTemplateKwargs(for: options.thinkingMode)
+                ? Self.chatTemplateKwargs(
+                    for: options.thinkingMode,
+                    reasoningEffort: options.reasoningEffort
+                )
                 : nil,
             response_format: Self.responseFormat(from: options.responseFormat),
             options: ollamaOptions
@@ -408,15 +416,19 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
     }
 
     private static func chatTemplateKwargs(
-        for thinkingMode: PromptInferenceSettings.ThinkingMode
+        for thinkingMode: PromptInferenceSettings.ThinkingMode,
+        reasoningEffort: PromptInferenceSettings.ReasoningEffort?
     ) -> OpenAIChatTemplateKwargs? {
         switch thinkingMode {
         case .providerDefault:
             return nil
         case .enabled:
-            return OpenAIChatTemplateKwargs(enable_thinking: true)
+            return OpenAIChatTemplateKwargs(
+                enable_thinking: true,
+                reasoning_effort: reasoningEffort?.rawValue
+            )
         case .disabled:
-            return OpenAIChatTemplateKwargs(enable_thinking: false)
+            return OpenAIChatTemplateKwargs(enable_thinking: false, reasoning_effort: nil)
         }
     }
 
@@ -434,7 +446,8 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
         // Only process data: lines
         guard line.hasPrefix("data: ") || line.hasPrefix("data:") else { return .skip }
 
-        let payload = line.hasPrefix("data: ")
+        let payload =
+            line.hasPrefix("data: ")
             ? String(line.dropFirst(6))
             : String(line.dropFirst(5))
 
@@ -452,7 +465,8 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
         // the human-readable context-length failure. Surface those as errors
         // instead of silently dropping the frame and accepting an empty EOF.
         if let streamError = try? JSONDecoder().decode(StreamErrorResponse.self, from: data),
-           let errorMessage = streamError.error {
+            let errorMessage = streamError.error
+        {
             return .error(errorMessage)
         }
 
@@ -462,8 +476,9 @@ struct OpenAICompatibleLLMHTTPAdapter: LLMHTTPAdapter {
 
         // Extract content delta, ignoring role-only and finish_reason frames
         guard let delta = chunk.choices.first?.delta,
-              let content = delta.content,
-              !content.isEmpty else {
+            let content = delta.content,
+            !content.isEmpty
+        else {
             return .skip
         }
 
@@ -519,11 +534,12 @@ struct OpenAIRequestBody: Encodable {
     let seed: Int?
     let chat_template_kwargs: OpenAIChatTemplateKwargs?
     let response_format: OpenAIResponseFormat?
-    let options: OllamaRequestOptions? // Ollama-specific: num_ctx etc.
+    let options: OllamaRequestOptions?  // Ollama-specific: num_ctx etc.
 }
 
 struct OpenAIChatTemplateKwargs: Encodable {
     let enable_thinking: Bool
+    let reasoning_effort: String?
 }
 
 struct OpenAIResponseFormat: Encodable {

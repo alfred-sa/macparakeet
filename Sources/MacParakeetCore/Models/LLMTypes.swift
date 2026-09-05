@@ -136,6 +136,7 @@ public struct ChatCompletionOptions: Sendable, Equatable {
     public let maxTokens: Int?
     public let seed: Int?
     public let thinkingMode: PromptInferenceSettings.ThinkingMode
+    public let reasoningEffort: PromptInferenceSettings.ReasoningEffort?
     public let usesPromptInferenceSettings: Bool
     public let effectiveInferenceSettings: PromptInferenceSettings?
     public let responseFormat: ChatResponseFormat?
@@ -147,6 +148,7 @@ public struct ChatCompletionOptions: Sendable, Equatable {
         maxTokens: Int? = nil,
         seed: Int? = nil,
         thinkingMode: PromptInferenceSettings.ThinkingMode = .providerDefault,
+        reasoningEffort: PromptInferenceSettings.ReasoningEffort? = nil,
         usesPromptInferenceSettings: Bool = false,
         effectiveInferenceSettings: PromptInferenceSettings? = nil,
         responseFormat: ChatResponseFormat? = nil
@@ -157,6 +159,7 @@ public struct ChatCompletionOptions: Sendable, Equatable {
         self.maxTokens = maxTokens
         self.seed = seed
         self.thinkingMode = thinkingMode
+        self.reasoningEffort = reasoningEffort
         self.usesPromptInferenceSettings = usesPromptInferenceSettings
         self.effectiveInferenceSettings = effectiveInferenceSettings
         self.responseFormat = responseFormat
@@ -166,15 +169,26 @@ public struct ChatCompletionOptions: Sendable, Equatable {
 
     public func applying(_ settings: PromptInferenceSettings?) -> ChatCompletionOptions {
         guard let settings else { return self }
+        let resolvedThinkingMode =
+            settings.thinkingMode == .providerDefault
+            ? thinkingMode
+            : settings.thinkingMode
+        let resolvedReasoningEffort: PromptInferenceSettings.ReasoningEffort?
+        if resolvedThinkingMode != .enabled {
+            resolvedReasoningEffort = nil
+        } else if settings.thinkingMode == .providerDefault {
+            resolvedReasoningEffort = reasoningEffort
+        } else {
+            resolvedReasoningEffort = settings.reasoningEffort
+        }
         return ChatCompletionOptions(
             temperature: settings.temperature ?? temperature,
             topP: settings.topP ?? topP,
             topK: settings.topK ?? topK,
             maxTokens: settings.maxTokens ?? maxTokens,
             seed: settings.seed ?? seed,
-            thinkingMode: settings.thinkingMode == .providerDefault
-                ? thinkingMode
-                : settings.thinkingMode,
+            thinkingMode: resolvedThinkingMode,
+            reasoningEffort: resolvedReasoningEffort,
             usesPromptInferenceSettings: usesPromptInferenceSettings,
             effectiveInferenceSettings: effectiveInferenceSettings,
             responseFormat: responseFormat
@@ -192,6 +206,7 @@ public struct ChatCompletionOptions: Sendable, Equatable {
             maxTokens: maxTokens,
             seed: seed,
             thinkingMode: thinkingMode,
+            reasoningEffort: reasoningEffort,
             usesPromptInferenceSettings: usesPromptInferenceSettings,
             effectiveInferenceSettings: effectiveSettings,
             responseFormat: responseFormat
