@@ -83,6 +83,7 @@ final class MeetingRecordingFlowCoordinator {
     private let sttManager: (any STTRuntimeManaging)?
     private let speechEngineSelectionProvider: (@Sendable () async -> SpeechEngineSelection?)?
     private let meetingAudioSourceModeProvider: @MainActor @Sendable () -> MeetingAudioSourceMode
+    private let meetingTypeIDProvider: @MainActor @Sendable () -> UUID?
     private let shouldShowFloatingMeetingPill: @MainActor @Sendable () -> Bool
     private let frontmostApplicationProvider: any FrontmostApplicationProviding
     private let probableCalendarSnapshotProvider: @MainActor @Sendable () -> MeetingCalendarSnapshot?
@@ -147,6 +148,7 @@ final class MeetingRecordingFlowCoordinator {
         meetingAudioSourceModeProvider: @escaping @MainActor @Sendable () -> MeetingAudioSourceMode = {
             .microphoneAndSystem
         },
+        meetingTypeIDProvider: @escaping @MainActor @Sendable () -> UUID? = { nil },
         shouldShowFloatingMeetingPill: @escaping @MainActor @Sendable () -> Bool = { true },
         frontmostApplicationProvider: any FrontmostApplicationProviding = NSWorkspaceFrontmostApplicationProvider(),
         probableCalendarSnapshotProvider: @escaping @MainActor @Sendable () -> MeetingCalendarSnapshot? = {
@@ -177,6 +179,7 @@ final class MeetingRecordingFlowCoordinator {
         self.sttManager = sttManager
         self.speechEngineSelectionProvider = speechEngineSelectionProvider
         self.meetingAudioSourceModeProvider = meetingAudioSourceModeProvider
+        self.meetingTypeIDProvider = meetingTypeIDProvider
         self.shouldShowFloatingMeetingPill = shouldShowFloatingMeetingPill
         self.frontmostApplicationProvider = frontmostApplicationProvider
         self.probableCalendarSnapshotProvider = probableCalendarSnapshotProvider
@@ -663,6 +666,7 @@ final class MeetingRecordingFlowCoordinator {
             let trigger = pendingTrigger
             let title = pendingTitle
             let calendarEventSnapshot = pendingCalendarEventSnapshot
+            let meetingTypeID = meetingTypeIDProvider()
             let sourceMode = pendingAudioSourceMode ?? meetingAudioSourceModeProvider()
             let startContext =
                 pendingStartContext
@@ -684,6 +688,7 @@ final class MeetingRecordingFlowCoordinator {
                         startContext: startContext,
                         calendarEventSnapshot: calendarEventSnapshot
                     )
+                    await meetingRecordingService.updateMeetingType(meetingTypeID)
                     guard self.ownsPendingStart(generation: gen) else {
                         self.recordIgnoredStartResult(generation: gen, outcome: "success")
                         return
@@ -909,11 +914,20 @@ final class MeetingRecordingFlowCoordinator {
                                 liveTranscriptLagged: liveTranscriptLagged
                             ))
                         let prepareRowStartedAt = Date()
-                        let prepared: Transcription
+                        var prepared: Transcription
                         do {
                             prepared = try await transcriptionService.prepareMeetingTranscription(
                                 recording: output
                             )
+                            // The user can refine the type while recording.
+                            // Snapshot it immediately before queueing so the
+                            // durable stub and auto-run routing agree.
+                            let meetingTypeID = output.meetingTypeId ?? self.meetingTypeIDProvider()
+                            try self.transcriptionRepo.updateMeetingType(
+                                id: prepared.id,
+                                meetingTypeId: meetingTypeID
+                            )
+                            prepared.meetingTypeId = meetingTypeID
                         } catch {
                             appendStopStage(
                                 "prepare_row",

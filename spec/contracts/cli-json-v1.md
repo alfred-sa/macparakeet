@@ -105,6 +105,18 @@ with human progress/status kept off stdout.
   independent of this preference. This additive surface was implemented and
   locally verified on 2026-09-05; release availability follows the normal
   channel process.
+- Version-aware prompt JSON adds `activeVersionId`, `activeVersionNumber`, optional `modelOverride`,
+  optional canonical provenance, and optional
+  deletion metadata without removing existing prompt fields. `prompts history
+  --json` returns an array of immutable version objects with `id`, `promptId`,
+  `versionNumber`, `content`, optional `inferenceSettings`, optional
+  `modelOverride`, `origin`, optional `changeNote`, and `createdAt`. `prompts
+  show --version N --json` returns the selected version rather than silently
+  substituting the active version. `prompts diff --json` returns prompt/from/to
+  identity, deterministic Markdown source hunks, and structured changed
+  settings/model values. Restore and soft-delete mutators return the resolved
+  affected prompt object; restore creates a new version and never rewrites an
+  old one.
 - LLM result JSON envelopes include additive optional `effectiveSettings` with
   the same object shape. For `prompts run --json`, a present value is the
   normalized adapter receipt after provider/model filtering. Absence means no
@@ -121,6 +133,11 @@ with human progress/status kept off stdout.
   Nullable `userNotesSnapshot` contains the exact normalized, bounded notes
   value supplied to prompt assembly, not necessarily the full canonical note.
   This field has the same pending-validation status as the CLI flags above.
+- Prompt-result objects may additionally include nullable `promptId`,
+  `promptVersionId`, `providerSnapshot`, and `modelSnapshot`. Library-driven
+  CLI/app generation populates those execution receipts. Historical and
+  externally imported results may omit them; omission never means the current
+  prompt/provider/model should be inferred.
 - `meetings show --json` and `meetings transcript --format json` expose
   `transcriptSegments` when the meeting row has durable segments. Each segment
   contains `id`, `startMs`, `endMs`, `speakerId`, `speakerLabel`, `text`, and
@@ -135,6 +152,19 @@ with human progress/status kept off stdout.
 - `meetings show --json` meeting objects can include optional `startContext`
   for meeting rows. When present it contains `triggerKind`, `sourceMode`, and
   optional `frontmostApplication` (`bundleIdentifier`, `localizedName`).
+- Meeting list/show/export/transcript JSON can include additive optional
+  `meetingType` and `meetingLabels`. A meeting type object has `id`, `name`,
+  optional `colorToken`, optional `iconName`, `sortOrder`, and `isArchived`;
+  a label object omits `iconName` and otherwise uses the same organization
+  fields. An absent/null type means unclassified; an empty labels array means
+  no labels. `meetings types list --json` and `meetings labels list --json`
+  return arrays of those objects. Classification mutation JSON returns the
+  meeting id plus its resolved optional type and complete label array.
+- `meetings list --type` and `--label` resolve a full UUID, an unambiguous UUID
+  prefix, or an exact case-insensitive name before applying the filter in SQL.
+  Multiple repeated filters use ANY semantics. `--unclassified` cannot be
+  combined with `--type`. Archived types/labels remain resolvable for meetings
+  that already use them but are excluded from default vocabulary lists.
 - `meetings show --json` and `meetings export --stdout --format json` may
   include `calendarEventSnapshot` for meeting recordings started from, or
   probably overlapping, a calendar event. The field is additive and local-only;
@@ -168,6 +198,12 @@ with human progress/status kept off stdout.
   object with `ok: true` plus affected IDs, counts, or model/cache names. Use
   `macparakeet-cli spec --json` for each command's documented JSON mode and
   output summary.
+- Prompt and meeting-classification command names and option shapes are
+  additive v1 surface: `prompts history`, version-aware `prompts show`,
+  `prompts diff`, `prompts restore`, `prompts delete`, `prompts
+  restore-deleted`, `meetings types`, `meetings labels`, `meetings classify`,
+  and meeting list classification filters. Classification names and prompt
+  content are local user data and never become telemetry dimensions.
 
 ## Failure Envelope
 

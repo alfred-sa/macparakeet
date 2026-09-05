@@ -7,6 +7,12 @@
 > Naming Note (2026-04-28): The database table remains `summaries`, but the Swift model/repository/view-model names are now `PromptResult`, `PromptResultRepository`, and `PromptResultsViewModel`.
 > Transform Note (2026-05-13): ADR-022 now uses `Prompt.Category.transform` for productized Transforms. The Prompt Library serves summaries and Transforms today; workflow steps remain future work.
 > Inference Settings Amendment (2026-09-03): Custom result prompts may carry typed, optional inference settings. They are snapshotted when work is queued, filtered by the selected provider/model, and the effective settings actually sent are stored with the resulting `PromptResult`. See spec/14.
+> Versioning And Classification Amendment (2026-09-05): Prompt content,
+> inference settings, and an optional model override now live in immutable
+> prompt versions. Built-in provenance no longer restricts edit/delete rights.
+> Meetings can carry one primary type and multiple labels, and the type can
+> select prompt availability and auto-run policy. See the amendment below and
+> spec/12.
 
 ## Context
 
@@ -18,9 +24,52 @@ Additionally, this feature is the first building block for a future processing l
 
 ## Decision
 
+### 2026-09-05 amendment: immutable versions and contextual meetings
+
+The `prompts` row owns a prompt's stable identity and mutable operational
+metadata. Its active content is resolved through `activeVersionId` to one
+immutable `prompt_versions` row. Prompt content, requested typed inference
+settings, and an optional active-provider model override are versioned. Name,
+technical category, organization collection, visibility, ordering, shortcut,
+running label, and routing policies are not versioned.
+
+Creating a prompt creates version 1. Saving a change to versioned values creates
+and activates exactly one new version in the same transaction. A no-op save
+creates no version. Restoring a historical version copies its values into a new,
+monotonically numbered version; history is never rewritten and the active
+pointer is never moved backwards. Runtime consumers obtain the resolved active
+prompt from `PromptRepository`; they do not join version tables themselves.
+The old `prompts.content` and `prompts.inferenceSettings` columns may exist only
+during a bounded migration window and are not maintained as permanent mirrors.
+
+Built-in prompts and user-created prompts have the same rename, edit,
+reconfigure, recategorize, hide, route, and delete rights. `isBuiltIn` is
+provenance only. Delete is soft delete so history and generated-result
+snapshots remain recoverable, and so launch reconciliation cannot resurrect a
+deleted built-in. A canonical built-in update is applied automatically only
+when persisted provenance proves that the prompt has never been customized or
+deleted. Otherwise MacParakeet may present the bundled definition as a
+comparison candidate, but it does not insert or activate that candidate without
+an explicit user action.
+
+Queued work captures `promptId`, `promptVersionId`, prompt text, requested
+settings, and model selection. Retry and completed-result snapshots remain
+stable after later edits or classification changes. Result rows retain their
+self-contained name/content/settings snapshots even when the originating
+prompt or version is deleted.
+
+Meeting classification is represented by zero or one primary `MeetingType` and
+zero or more `MeetingLabel` values. Type drives prompt availability and
+auto-run; labels are descriptive search facets in this version. A single Core
+resolver applies exact-type policy first, then the all-meeting-types policy.
+Without either policy the prompt is unavailable for that meeting. The same
+answer drives manual selection, automatic generation, and CLI eligibility.
+Changing classification after enqueue never mutates queued work and never
+triggers generation retroactively.
+
 ### 1. Prompt Library stored in SQLite
 
-Reusable prompt templates are stored in the `prompts` table (not UserDefaults). Each prompt has a name, content, category, visibility flag, and auto-run flag; ADR-022 adds nullable `keyboardShortcut` and `runningLabel` columns for Transform prompts. Built-in/community prompts are currently seeded from Swift constants in `Prompt.builtInPrompts()`. The JSON file at `Sources/MacParakeetCore/Resources/community-prompts.json` is kept as a contribution/reference artifact, not the active runtime seed source. Built-in/community summary prompts can be hidden but not edited or deleted. Built-in Transform prompts can be reset but otherwise use the Transforms UI rules from ADR-022. Custom prompts support full CRUD.
+Reusable prompt templates are stored in the `prompts` table (not UserDefaults). Each prompt has a name, content, category, visibility flag, and auto-run flag; ADR-022 adds nullable `keyboardShortcut` and `runningLabel` columns for Transform prompts. Built-in/community prompts are currently seeded from Swift constants in `Prompt.builtInPrompts()`. The JSON file at `Sources/MacParakeetCore/Resources/community-prompts.json` is kept as a contribution/reference artifact, not the active runtime seed source. Built-in and custom result/Transform prompts share full editing, versioning, and recoverable soft-deletion rights.
 
 The table is named `prompts` (not `summary_presets`) because the model is general-purpose — the same table serves summaries and Transforms today, and can serve workflow steps later. A `category` enum field (`.summary`, `.transform`) scopes prompts to their use case.
 

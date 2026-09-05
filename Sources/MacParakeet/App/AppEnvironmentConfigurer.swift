@@ -120,12 +120,19 @@ final class AppEnvironmentConfigurer {
         historyViewModel.configure(dictationRepo: env.dictationRepo)
         libraryViewModel.configure(
             transcriptionRepo: env.transcriptionRepo,
+            meetingTypeRepository: env.meetingTypeRepo,
+            meetingLabelRepository: env.meetingLabelRepo,
+            meetingClassificationService: env.meetingClassificationService,
             speakerAttributionReader: env.speakerAttributionReader
         )
         meetingsWorkspaceViewModel.configure(
             transcriptionRepo: env.transcriptionRepo,
             quickPromptRepo: env.quickPromptRepo,
-            promptRepo: env.promptRepo
+            promptRepo: env.promptRepo,
+            meetingTypeRepository: env.meetingTypeRepo,
+            meetingLabelRepository: env.meetingLabelRepo,
+            meetingClassificationService: env.meetingClassificationService,
+            promptMeetingPolicyRepository: env.promptMeetingPolicyRepo
         )
         transcriptionViewModel.onMeetingRenamed = { [weak self] rename in
             self?.libraryViewModel.applyMeetingRename(rename)
@@ -175,7 +182,12 @@ final class AppEnvironmentConfigurer {
             self?.textSnippetsViewModel.loadSnippets()
             self?.settingsViewModel.refreshStats()
         }
-        promptsViewModel.configure(repo: env.promptRepo)
+        promptsViewModel.configure(
+            repo: env.promptRepo,
+            versionRepo: env.promptVersionRepo,
+            collectionRepo: env.promptCollectionRepo,
+            editingService: env.promptEditingService
+        )
         transformsViewModel.configure(
             repo: env.promptRepo,
             historyRepo: env.transformHistoryRepo,
@@ -214,12 +226,13 @@ final class AppEnvironmentConfigurer {
             llmService: hasLLMConfig ? env.llmService : nil,
             promptRepo: env.promptRepo,
             promptResultRepo: env.promptResultRepo,
+            promptMeetingPolicyRepository: env.promptMeetingPolicyRepo,
             // Without this, `fetchUserNotes` short-circuits to `nil`, which
             // would silently render `{{userNotes}}` as an empty string in any
             // user-defined prompt that references it, and feed `nil` userNotes
             // into the chat path that ADR-020's 2026-05-02 amendment relies on.
             transcriptionRepo: env.transcriptionRepo,
-            meetingArtifactStore: MeetingArtifactStore(),
+            meetingArtifactStore: env.meetingArtifactStore,
             speakerAttributionReader: env.speakerAttributionReader,
             configStore: env.llmConfigStore,
             llmClient: env.llmClient,
@@ -329,6 +342,9 @@ final class AppEnvironmentConfigurer {
             sttManager: env.sttScheduler,
             speechEngineSelectionProvider: { SpeechEngineSelection.liveSpeech() },
             meetingAudioSourceModeProvider: { env.runtimePreferences.meetingAudioSourceMode },
+            meetingTypeIDProvider: { [weak meetingsWorkspaceViewModel] in
+                meetingsWorkspaceViewModel?.recordingMeetingTypeID
+            },
             shouldShowFloatingMeetingPill: { env.runtimePreferences.shouldShowMeetingRecordingPill },
             probableCalendarSnapshotProvider: {
                 calendarCoordinator?.probableSnapshotForManualStart()

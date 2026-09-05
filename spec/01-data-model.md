@@ -8,6 +8,35 @@ MacParakeet uses **SQLite via GRDB** for all persistent storage. Single database
 
 **Design Principle (YAGNI):** Only add tables when a version needs them. Don't create empty tables for future features.
 
+## Versioned prompts and meeting classification (2026-09-05)
+
+The versioned Prompt Manager extends the relational model with:
+
+- `prompt_versions`: immutable, monotonically numbered versions containing
+  Markdown content, optional typed inference settings, optional model override,
+  origin, note, and creation time. `prompts.activeVersionId` selects the active
+  row. The repository resolves this join for callers.
+- `prompt_collections`: optional user-facing organization for prompts. The
+  existing `Prompt.Category` remains the technical result/Transform kind.
+- soft deletion and canonical provenance on `prompts`; built-in provenance does
+  not confer different CRUD rights.
+- `meeting_types`: the optional primary behavioral classification referenced by
+  a meeting transcription.
+- `meeting_labels` plus `transcription_meeting_labels`: reusable descriptive
+  facets with a unique meeting/label pair.
+- `prompt_meeting_policies`: exact-type or all-types prompt availability and
+  auto-run rules, resolved centrally with exact type taking precedence.
+
+Prompt name and operational metadata stay on `prompts` and are not versioned.
+The historical `prompts.content` and `prompts.inferenceSettings` columns are
+copied into V1 during migration and may remain only for a bounded compatibility
+window; they are not permanent writable mirrors. `summaries.promptContent` and
+`summaries.inferenceSettingsSnapshot` remain durable execution snapshots.
+
+Classification names are local user data and are not telemetry dimensions.
+SQLite is the mutable source of truth; meeting artifact JSON and Markdown are
+materialized projections refreshed after classification changes.
+
 ## Relationship Diagram
 
 ```
@@ -428,11 +457,9 @@ CREATE INDEX idx_chat_conversations_transcription_id ON chat_conversations(trans
 
 ### `prompts` (v0.7)
 
-Reusable prompt templates for LLM-powered transcript processing. Community
-prompts are seeded during migration; custom prompts support full CRUD.
-Community prompt instruction text remains read-only and rows cannot be deleted,
-but user-owned configuration such as visibility, auto-run scope, and the
-in-progress meeting-notes context preference can be changed.
+Reusable prompt templates for LLM-powered transcript processing. Built-in and
+custom prompts share full editing, immutable versioning, recoverable
+soft-deletion, and configurable meeting-notes context rights.
 
 ```sql
 CREATE TABLE prompts (
@@ -458,7 +485,7 @@ CREATE UNIQUE INDEX idx_prompts_name ON prompts(name COLLATE NOCASE);
 
 **Notes:**
 - `name` has a case-insensitive unique index — no duplicate names across community and custom prompts.
-- `isBuiltIn` prompts are seeded from `Prompt.builtInPrompts()` during migration. The repository layer enforces the hide-only invariant (delete returns `false` for built-in prompts).
+- `isBuiltIn` prompts are seeded from `Prompt.builtInPrompts()` during migration. Built-ins use the same editable, recoverable soft-deletion lifecycle as custom prompts.
 - `isAutoRun` is independent of `isVisible`, but repository/UI behavior forces auto-run prompts visible while auto-run is enabled.
 - `category` currently stores the raw value `"summary"` for compatibility, while the Swift enum case is `Prompt.Category.result`.
 - Built-ins currently come from `Prompt.builtInPrompts()` in Swift. "Summary" is the lone auto-run built-in for users who have not disabled every auto-run prompt. ("Memo-Steered Notes" was a second auto-run built-in introduced in ADR-020 and reverted on 2026-05-02 — see ADR-020 amendment.)

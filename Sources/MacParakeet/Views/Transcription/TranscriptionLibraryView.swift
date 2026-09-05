@@ -14,6 +14,7 @@ struct TranscriptionLibraryView: View {
     var onSelect: (Transcription) -> Void
 
     @State private var pendingDelete: Transcription?
+    @State private var classificationTarget: Transcription?
     @State private var pendingRename: Transcription?
     @State private var renameTitleDraft = ""
     @State private var pendingDeleteAudio: Transcription?
@@ -81,6 +82,12 @@ struct TranscriptionLibraryView: View {
                 }
                 .padding(.horizontal, DesignSystem.Spacing.lg)
                 .padding(.bottom, DesignSystem.Spacing.sm)
+            }
+
+            if AppFeatures.meetingRecordingEnabled {
+                MeetingClassificationFilterBar(libraryViewModel: viewModel)
+                    .padding(.horizontal, DesignSystem.Spacing.lg)
+                    .padding(.bottom, DesignSystem.Spacing.sm)
             }
 
             if let errorMessage = viewModel.errorMessage {
@@ -256,6 +263,12 @@ struct TranscriptionLibraryView: View {
             .onDisappear {
                 cancelBulkExport()
             }
+            .sheet(item: $classificationTarget) { transcription in
+                MeetingClassificationEditor(
+                    transcription: transcription,
+                    viewModel: viewModel.meetingClassificationViewModel
+                )
+            }
     }
 
     private var thumbnailGrid: some View {
@@ -308,6 +321,9 @@ struct TranscriptionLibraryView: View {
                     ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
                         MeetingRowCard(
                             transcription: transcription,
+                            classification: viewModel.meetingClassificationViewModel.classification(
+                                for: transcription.id
+                            ),
                             searchText: viewModel.searchText,
                             isSelected: viewModel.isTranscriptionSelected(transcription),
                             showsSelectionControls: viewModel.isBulkSelectionModeEnabled,
@@ -365,6 +381,14 @@ struct TranscriptionLibraryView: View {
         }
 
         if transcription.sourceType == .meeting {
+            Button {
+                classificationTarget = transcription
+            } label: {
+                Label("Classify...", systemImage: "tag")
+            }
+
+            Divider()
+
             let audioState = MeetingAudioFile.state(for: transcription)
             let audioAvailable = audioState == .saved
             let audioRemovable = MeetingAudioFile.isRemovable(for: transcription, state: audioState)

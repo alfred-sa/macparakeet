@@ -16,8 +16,10 @@ struct MeetingsView: View {
     @State private var audioSaveErrorMessage: String?
     @State private var pendingDeleteAudio: Transcription?
     @State private var pendingDeleteMeeting: Transcription?
+    @State private var classificationTarget: Transcription?
     @State private var showingAskPromptsSheet = false
     @State private var showingPromptLibrary = false
+    @State private var showingMeetingPromptPolicies = false
     @FocusState private var recentMeetingsSelectionFocused: Bool
 
     private static let rightRailWidth: CGFloat = 280
@@ -194,6 +196,15 @@ struct MeetingsView: View {
             ) {
                 PromptLibraryView(viewModel: viewModel.promptsViewModel)
             }
+            .sheet(item: $classificationTarget) { transcription in
+                MeetingClassificationEditor(
+                    transcription: transcription,
+                    viewModel: viewModel.recentMeetingsViewModel.meetingClassificationViewModel
+                )
+            }
+            .sheet(isPresented: $showingMeetingPromptPolicies) {
+                MeetingPromptPolicyEditor(viewModel: viewModel)
+            }
     }
 
     private var header: some View {
@@ -225,12 +236,17 @@ struct MeetingsView: View {
     }
 
     private var recordingSurface: some View {
-        MeetingRecordingTile(
-            viewModel: viewModel.meetingPillViewModel,
-            permissionState: meetingPermissionState,
-            onTap: onRecordMeeting,
-            onPauseToggle: onPauseToggleMeeting
-        )
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            MeetingRecordingTile(
+                viewModel: viewModel.meetingPillViewModel,
+                permissionState: meetingPermissionState,
+                onTap: onRecordMeeting,
+                onPauseToggle: onPauseToggleMeeting
+            )
+
+            MeetingRecordingTypePicker(viewModel: viewModel)
+            .padding(.horizontal, DesignSystem.Spacing.sm)
+        }
     }
 
     private func contentColumns(usesTwoColumnLayout: Bool) -> some View {
@@ -472,9 +488,16 @@ struct MeetingsView: View {
                 Spacer(minLength: 0)
 
                 Button {
+                    showingMeetingPromptPolicies = true
+                } label: {
+                    Label("By Type", systemImage: "slider.horizontal.3")
+                }
+                .parakeetAction(.secondary)
+
+                Button {
                     showingPromptLibrary = true
                 } label: {
-                    Label("Manage", systemImage: "slider.horizontal.3")
+                    Label("Prompts", systemImage: "text.badge.plus")
                 }
                 .parakeetAction(.secondary)
             }
@@ -502,6 +525,12 @@ struct MeetingsView: View {
     private var recentMeetingsSection: some View {
         MeetingsSection(title: "Recent Meetings", icon: "clock.arrow.circlepath") {
             VStack(alignment: .leading, spacing: 0) {
+                MeetingClassificationFilterBar(
+                    libraryViewModel: viewModel.recentMeetingsViewModel
+                )
+                .padding(.horizontal, DesignSystem.Spacing.md)
+                .padding(.vertical, DesignSystem.Spacing.sm)
+
                 if shouldShowRecentMeetingSearch {
                     recentMeetingSearchField
                 }
@@ -558,6 +587,9 @@ struct MeetingsView: View {
                 ForEach(Array(section.items.enumerated()), id: \.element.id) { idx, transcription in
                     MeetingRowCard(
                         transcription: transcription,
+                        classification: viewModel.recentMeetingsViewModel.meetingClassificationViewModel.classification(
+                            for: transcription.id
+                        ),
                         searchText: viewModel.recentMeetingsViewModel.searchText,
                         isSelected: viewModel.recentMeetingsViewModel.isTranscriptionSelected(transcription),
                         showsSelectionControls: viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled,
@@ -591,6 +623,12 @@ struct MeetingsView: View {
             onSelectMeeting(transcription)
         } label: {
             Label("Open", systemImage: "doc.text")
+        }
+
+        Button {
+            classificationTarget = transcription
+        } label: {
+            Label("Classify...", systemImage: "tag")
         }
 
         if !viewModel.recentMeetingsViewModel.isBulkSelectionModeEnabled {

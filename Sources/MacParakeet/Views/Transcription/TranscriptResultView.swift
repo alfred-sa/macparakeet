@@ -408,6 +408,7 @@ struct TranscriptResultView: View {
     var chatViewModel: TranscriptChatViewModel
     @Bindable var promptResultsViewModel: PromptResultsViewModel
     @Bindable var promptsViewModel: PromptsViewModel
+    var meetingClassificationViewModel: MeetingClassificationViewModel? = nil
     var onBack: (() -> Void)?
     var onStartNew: (() -> Void)?
     var onRetranscribe: ((Transcription, SpeechEngineSelection?, RetranscriptionSpeakerSelection?) -> Void)?
@@ -418,6 +419,7 @@ struct TranscriptResultView: View {
 
     @State private var backHovered = false
     @State private var headerExpanded = false
+    @State private var showingMeetingClassification = false
     @State private var speakerOverviewExpanded = true
     @State private var copied = false
     @State private var copiedResultID: UUID?
@@ -582,6 +584,13 @@ struct TranscriptResultView: View {
                     promptResultsViewModel.markPromptResultViewed(id)
                 }
             }
+            .onChange(of: meetingClassificationViewModel?.classification(for: transcription.id)?.meetingType?.id) { _, meetingTypeID in
+                guard transcription.sourceType == .meeting else { return }
+                promptResultsViewModel.loadVisiblePrompts(
+                    sourceType: .meeting,
+                    meetingTypeId: meetingTypeID
+                )
+            }
             .onDisappear(perform: handleDisappear)
     }
 
@@ -595,6 +604,14 @@ struct TranscriptResultView: View {
                 }
             ) {
                 PromptLibraryView(viewModel: promptsViewModel)
+            }
+            .sheet(isPresented: $showingMeetingClassification) {
+                if let meetingClassificationViewModel {
+                    MeetingClassificationEditor(
+                        transcription: activeTranscription,
+                        viewModel: meetingClassificationViewModel
+                    )
+                }
             }
             .alert("New speaker", isPresented: $showingNewSpeakerPrompt) {
                 TextField("Speaker name", text: $newSpeakerLabel)
@@ -659,6 +676,10 @@ struct TranscriptResultView: View {
         viewModel.loadPersistedContent()
         promptResultsViewModel.loadVisiblePrompts()
         promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
+        if transcription.sourceType == .meeting {
+            meetingClassificationViewModel?.loadOptions()
+            meetingClassificationViewModel?.loadClassification(for: transcription.id)
+        }
         chatViewModel.loadTranscript(transcriptText, transcriptionId: viewModel.currentTranscription?.id)
         scheduleRichAIContextLoad()
         // Re-evaluate typed meeting notes on every send so external CLI edits
@@ -717,6 +738,9 @@ struct TranscriptResultView: View {
             applyEmptySegmentCache()
         }
         promptResultsViewModel.loadPromptResults(transcriptionId: transcription.id)
+        if transcription.sourceType == .meeting {
+            meetingClassificationViewModel?.loadClassification(for: transcription.id)
+        }
         chatViewModel.loadTranscript(transcriptText, transcriptionId: viewModel.currentTranscription?.id)
         scheduleRichAIContextLoad()
     }
@@ -1605,6 +1629,23 @@ struct TranscriptResultView: View {
                     }
                     .buttonStyle(.plain)
                     .help(transcription.sourceType == .meeting ? "Rename meeting" : "Rename transcription")
+                }
+
+                if transcription.sourceType == .meeting, let meetingClassificationViewModel {
+                    MeetingClassificationBadges(
+                        classification: meetingClassificationViewModel.classification(for: transcription.id)
+                    )
+
+                    Button {
+                        showingMeetingClassification = true
+                    } label: {
+                        Image(systemName: "tag")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(DesignSystem.Colors.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit meeting type and labels")
+                    .accessibilityLabel("Edit meeting classification")
                 }
 
                 if transcription.recoveredFromCrash {

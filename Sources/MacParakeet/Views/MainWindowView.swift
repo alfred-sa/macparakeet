@@ -129,6 +129,7 @@ struct MainWindowView: View {
                             promptResultsViewModel: promptResultsViewModel,
                             promptsViewModel: promptsViewModel,
                             meetingPillViewModel: meetingPillViewModel,
+                            meetingsWorkspaceViewModel: meetingsWorkspaceViewModel,
                             meetingPermissionState: meetingPermissionState,
                             showingProgressDetail: $state.showingProgressDetail,
                             onRecordMeeting: onRecordMeeting,
@@ -164,6 +165,7 @@ struct MainWindowView: View {
                                 chatViewModel: chatViewModel,
                                 promptResultsViewModel: promptResultsViewModel,
                                 promptsViewModel: promptsViewModel,
+                                meetingClassificationViewModel: libraryViewModel.meetingClassificationViewModel,
                                 onBack: {
                                     transcriptionViewModel.showInputPortal()
                                 },

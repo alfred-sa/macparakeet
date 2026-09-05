@@ -1,13 +1,15 @@
 # Versioned Prompt Manager and Meeting Classification — Implementation Plan
 
-> Status: **PROPOSED** — product and architecture decisions below were refined
-> with the owner on 2026-09-05. Implementation must not start until this plan is
-> explicitly approved for execution.
+> Status: **COMPLETED** — product and architecture decisions below were
+> refined with the owner on 2026-09-05, implementation was explicitly
+> approved on 2026-09-05, and the implementation and verification gates were
+> completed on 2026-09-05.
 >
 > Priority: **P1** for prompt versioning/management, **P2** for meeting
 > classification and context routing.
 >
-> Baseline inspected on 2026-09-05: `main` at `2f11b0cb`.
+> Execution baseline on 2026-09-05: plan commit `bb0ebd5d` (code baseline
+> `2f11b0cb`).
 
 Related authority:
 
@@ -17,7 +19,7 @@ Related authority:
 - [`spec/adr/022-transforms-system-wide-rewrite.md`](../../spec/adr/022-transforms-system-wide-rewrite.md)
 - [`spec/contracts/cli-json-v1.md`](../../spec/contracts/cli-json-v1.md)
 - [`spec/contracts/meeting-artifacts-v1.md`](../../spec/contracts/meeting-artifacts-v1.md)
-- [`plans/completed/2026-09-03-per-prompt-inference-settings.md`](../completed/2026-09-03-per-prompt-inference-settings.md)
+- [`plans/completed/2026-09-03-per-prompt-inference-settings.md`](2026-09-03-per-prompt-inference-settings.md)
 
 ## 1. Goal
 
