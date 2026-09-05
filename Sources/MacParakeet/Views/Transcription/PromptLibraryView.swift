@@ -501,28 +501,21 @@ struct PromptLibraryView: View {
                     Spacer()
                 }
 
-                // Workaround for macOS SwiftUI bug: NSTextView (.textSelection(.enabled))
-                // does not animate height bounds correctly when lineLimit changes, and expands to full height.
-                // We use an invisible SwiftUI Text to drive the layout container's smooth animation,
-                // and place the selectable text in an overlay that is strictly clipped to those bounds.
-                Text(prompt.content)
-                    .font(DesignSystem.Typography.body)
-                    .lineLimit(isExpanded ? nil : 2)
-                    .lineSpacing(2)
-                    .opacity(0)
-                    .accessibilityHidden(true)
-                    .overlay(alignment: .topLeading) {
-                        Text(prompt.content)
-                            .font(DesignSystem.Typography.body)
-                            .foregroundStyle(
-                                prompt.isVisible ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary
-                            )
-                            .lineLimit(isExpanded ? nil : 2)
-                            .lineSpacing(2)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    }
-                    .clipped()
+                if isExpanded {
+                    MarkdownContentView(prompt.content)
+                        .opacity(prompt.isVisible ? 1 : 0.65)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(prompt.content)
+                        .font(DesignSystem.Typography.body)
+                        .foregroundStyle(
+                            prompt.isVisible ? DesignSystem.Colors.textSecondary : DesignSystem.Colors.textTertiary
+                        )
+                        .lineLimit(2)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
 
                 HStack(spacing: DesignSystem.Spacing.sm) {
                     if let summary = PromptsViewModel.compactInferenceSummary(prompt.inferenceSettings) {
