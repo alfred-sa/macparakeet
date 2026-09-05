@@ -43,6 +43,14 @@ swift run macparakeet-cli --help
 swift run macparakeet-cli health
 ```
 
+For a testable GUI build, use `scripts/dev/run_app.sh` instead of copying its
+`xcodebuild` command by hand. `SwiftStreamingMarkdown` depends transitively on
+the `EquatableMacros` plugin, so Xcode builds must keep
+`-skipMacroValidation`; otherwise dependency resolution stops with
+`Macro “EquatableMacros” ... must be enabled before it can be used`. The dev
+script owns this flag. Do not install another Markdown renderer or edit the
+package checkout to work around the error.
+
 Iterate on focused tests ONLY (`swift test --filter <AreaTests>` for the
 areas the diff touches). Run the full `swift test` suite AT MOST ONCE per
 task, as the final gate before declaring code-change work complete — never

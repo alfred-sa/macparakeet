@@ -89,6 +89,7 @@ if ! xcodebuild build \
   -configuration "$CONFIG" \
   -destination "platform=OS X,arch=arm64" \
   -derivedDataPath "$DERIVED_DATA_DIR" \
+  -skipMacroValidation \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO >"$BUILD_LOG_FILE" 2>&1; then
   echo "xcodebuild failed. Last 120 log lines from $BUILD_LOG_FILE:" >&2
