@@ -211,7 +211,6 @@ struct MeetingClassificationFilterBar: View {
 struct MeetingClassificationEditor: View {
     let transcription: Transcription
     @Bindable var viewModel: MeetingClassificationViewModel
-    let onClose: () -> Void
     @State private var newLabelName = ""
 
     private var classification: MeetingClassification {
@@ -221,31 +220,6 @@ struct MeetingClassificationEditor: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Classification")
-                        .font(DesignSystem.Typography.sectionTitle)
-                    Text(transcription.effectiveDisplayTitle)
-                        .font(DesignSystem.Typography.bodySmall)
-                        .foregroundStyle(DesignSystem.Colors.textSecondary)
-                        .lineLimit(1)
-                }
-                Spacer()
-                Button(action: onClose) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .background(Circle().fill(DesignSystem.Colors.surfaceElevated))
-                .help("Close classification")
-                .accessibilityLabel("Close classification")
-            }
-            .padding(DesignSystem.Spacing.lg)
-
-            Divider()
-
             ScrollView {
                 VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
                     VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
@@ -604,10 +578,9 @@ private struct MeetingClassificationPopoverModifier: ViewModifier {
             if let viewModel {
                 MeetingClassificationEditor(
                     transcription: transcription,
-                    viewModel: viewModel,
-                    onClose: { item = nil }
+                    viewModel: viewModel
                 )
-                .frame(width: 340, height: 330)
+                .frame(width: 340, height: 260)
             }
         }
     }

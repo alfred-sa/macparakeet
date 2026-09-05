@@ -153,8 +153,8 @@ queued-completion behavior.
 Meeting type and label editing uses a compact popover anchored to the action
 that opened it from the Meetings workspace, Library, or saved-meeting detail.
 It floats above the current context without masking or resizing the meeting and
-is never presented as a blocking sheet. Clicking outside or using its compact
-close control dismisses it.
+is never presented as a blocking sheet. The popover does not repeat the meeting
+title or add its own heading; clicking outside or pressing Escape dismisses it.
 
 The Meetings workspace does not expose a separate "Type for next meeting"
 picker below the recording tile. During an active recording, the type picker
