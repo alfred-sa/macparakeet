@@ -142,7 +142,7 @@ custom prompt.
 
 ## Target Data Model
 
-Register additive migration `v0.32-prompt-meeting-notes-context` in
+Register additive migration `v0.33-prompt-meeting-notes-context` in
 `DatabaseManager`; do not edit the shipped v0.8 migrations.
 
 ```text
