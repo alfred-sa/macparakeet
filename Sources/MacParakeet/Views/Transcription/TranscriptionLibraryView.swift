@@ -72,6 +72,8 @@ struct TranscriptionLibraryView: View {
                             .tag(LibraryLayoutMode.list)
                     }
                     .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel("Library layout")
                     .frame(width: 76)
                     .help(libraryLayoutMode == .grid ? "Switch to list view" : "Switch to grid view")
                 }
