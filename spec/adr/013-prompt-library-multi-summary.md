@@ -10,9 +10,9 @@
 > Versioning And Classification Amendment (2026-09-05): Prompt content,
 > inference settings, and an optional model override now live in immutable
 > prompt versions. Built-in provenance no longer restricts edit/delete rights.
-> Meetings can carry one primary type and multiple labels, and the type can
-> select prompt availability and auto-run policy. See the amendment below and
-> spec/12.
+> Every transcription can carry multiple labels. Result prompts can target
+> labels to control availability; auto-run remains the prompt's source-aware
+> setting and only runs when the prompt is available. See the amendment below.
 
 ## Context
 
@@ -24,7 +24,7 @@ Additionally, this feature is the first building block for a future processing l
 
 ## Decision
 
-### 2026-09-05 amendment: immutable versions and contextual meetings
+### 2026-09-05 amendment: immutable versions and label context
 
 The `prompts` row owns a prompt's stable identity and mutable operational
 metadata. Its active content is resolved through `activeVersionId` to one
@@ -58,14 +58,20 @@ stable after later edits or classification changes. Result rows retain their
 self-contained name/content/settings snapshots even when the originating
 prompt or version is deleted.
 
-Meeting classification is represented by zero or one primary `MeetingType` and
-zero or more `MeetingLabel` values. Type drives prompt availability and
-auto-run; labels are descriptive search facets in this version. A single Core
-resolver applies exact-type policy first, then the all-meeting-types policy.
-Without either policy the prompt is unavailable for that meeting. The same
-answer drives manual selection, automatic generation, and CLI eligibility.
-Changing classification after enqueue never mutates queued work and never
-triggers generation retroactively.
+User-defined classification is label-only and applies to every transcription
+source. A result prompt may target zero or more labels. Zero targets means the
+prompt is available for every transcription; otherwise at least one label must
+match (OR semantics). Auto-run remains source-aware prompt metadata and is
+gated by the same availability result. The resolver drives both manual
+selection and automatic generation. Changing labels after enqueue never
+mutates queued work and never triggers generation retroactively.
+
+`prompt_label_policies` stores the fallback and label-specific availability
+rules. The Prompt Manager exposes the common subset as either “All
+transcriptions” or a set of labels. The legacy `prompt_meeting_policies` and
+meeting-type tables remain temporarily for downgrade compatibility; migration
+v0.38 copies their rules to labels and runtime selection no longer consults
+meeting types.
 
 ### 1. Prompt Library stored in SQLite
 

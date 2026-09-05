@@ -64,7 +64,7 @@ struct MeetingClassificationFilterBar: View {
                 .buttonStyle(.plain)
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
-                .help("Clear meeting type and label filters")
+                .help("Clear label filters")
             }
 
             Spacer(minLength: 0)
@@ -854,7 +854,7 @@ struct MeetingPromptPolicyEditor: View {
     }
 }
 
-private enum MeetingClassificationTint {
+enum MeetingClassificationTint {
     static func color(for token: String?, fallback: Int) -> Color {
         switch token?.lowercased() {
         case "coral", "orange": return DesignSystem.Colors.accent

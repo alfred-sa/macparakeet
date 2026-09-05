@@ -122,7 +122,6 @@ public final class MeetingClassificationViewModel {
     @discardableResult
     public func loadClassifications(for transcriptions: [Transcription]) -> [Task<Void, Never>] {
         transcriptions
-            .filter { $0.sourceType == .meeting }
             .map { loadClassification(for: $0.id) }
     }
 

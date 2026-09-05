@@ -25,12 +25,20 @@ The versioned Prompt Manager extends the relational model with:
   existing `Prompt.Category` remains the technical result/Transform kind.
 - soft deletion and canonical provenance on `prompts`; built-in provenance does
   not confer different CRUD rights.
-- `meeting_types`: the optional primary behavioral classification referenced by
-  a meeting transcription.
-- `meeting_labels` plus `transcription_meeting_labels`: reusable descriptive
-  facets with a unique meeting/label pair.
-- `prompt_meeting_policies`: exact-type or all-types prompt availability and
-  auto-run rules, resolved centrally with exact type taking precedence.
+- `meeting_labels` plus `transcription_meeting_labels`: reusable labels for
+  every transcription source, with a unique transcription/label pair. The
+  historical table names are retained for migration compatibility.
+- `prompt_label_policies`: label-specific or all-transcriptions prompt
+  availability. Matching labels use OR semantics; auto-run remains sourced
+  from prompt metadata and is gated by availability.
+- `meeting_types` and `prompt_meeting_policies`: legacy compatibility state,
+  migrated to labels by v0.37/v0.38 and no longer used by the primary UI or
+  runtime prompt resolver.
+
+The v0.38 policy backfill copies prompt and label foreign keys in their
+existing SQLite representation. Legacy TEXT identifiers remain TEXT; UUID
+identifiers already stored as BLOBs retain their bytes. The migration does
+not rewrite parent identifiers or re-encode their references.
 
 Prompt name and operational metadata stay on `prompts` and are not versioned.
 The historical `prompts.content` and `prompts.inferenceSettings` columns are

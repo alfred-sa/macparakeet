@@ -584,11 +584,11 @@ struct TranscriptResultView: View {
                     promptResultsViewModel.markPromptResultViewed(id)
                 }
             }
-            .onChange(of: meetingClassificationViewModel?.classification(for: transcription.id)?.meetingType?.id) { _, meetingTypeID in
-                guard transcription.sourceType == .meeting else { return }
+            .onChange(of: meetingClassificationViewModel?.classification(for: transcription.id)?.labels.map(\.id) ?? []) {
+                _, _ in
                 promptResultsViewModel.loadVisiblePrompts(
-                    sourceType: .meeting,
-                    meetingTypeId: meetingTypeID
+                    sourceType: transcription.sourceType,
+                    meetingTypeId: transcription.meetingTypeId
                 )
             }
             .onDisappear(perform: handleDisappear)

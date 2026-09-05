@@ -1049,6 +1049,48 @@ final class PromptResultsViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedPrompt?.id, later.id)
     }
 
+    func testLabelPoliciesFilterPromptPickerForPodcast() throws {
+        let transcriptionID = UUID()
+        let customerLabelID = UUID()
+        let customerPrompt = Prompt(name: "Customer follow-up", content: "Draft follow-up", category: .result)
+        let generalPrompt = Prompt(name: "General summary", content: "Summarize", category: .result)
+        promptRepo.prompts = [customerPrompt, generalPrompt]
+        try transcriptionRepo.save(
+            Transcription(
+                id: transcriptionID,
+                fileName: "episode.mp3",
+                sourceType: .youtube
+            )
+        )
+        let policies = PromptLabelPolicyRepositoryMock()
+        policies.policiesByPromptID[customerPrompt.id] = [
+            PromptLabelPolicy(promptId: customerPrompt.id, scopeKind: .all, isAvailable: false),
+            PromptLabelPolicy(
+                promptId: customerPrompt.id,
+                scopeKind: .label,
+                labelId: customerLabelID,
+                isAvailable: true
+            ),
+        ]
+        let transcriptionLabels = TranscriptionLabelRepositoryMock()
+        transcriptionLabels.labelIDsByTranscriptionID[transcriptionID] = []
+        viewModel.configure(
+            llmService: llm,
+            promptRepo: promptRepo,
+            promptResultRepo: promptResultRepo,
+            promptLabelPolicyRepository: policies,
+            transcriptionLabelRepository: transcriptionLabels,
+            transcriptionRepo: transcriptionRepo
+        )
+
+        viewModel.loadPromptResults(transcriptionId: transcriptionID)
+        XCTAssertEqual(viewModel.visiblePrompts.map(\.id), [generalPrompt.id])
+
+        transcriptionLabels.labelIDsByTranscriptionID[transcriptionID] = [customerLabelID]
+        viewModel.loadVisiblePrompts()
+        XCTAssertEqual(Set(viewModel.visiblePrompts.map(\.id)), [customerPrompt.id, generalPrompt.id])
+    }
+
     func testAutoGeneratePromptResultsSkipsWhenAutoRunPromptFetchFails() {
         promptRepo.fetchAutoRunPromptsError = PromptAutoRunFetchError()
         viewModel.configure(
@@ -1500,6 +1542,54 @@ final class PromptResultsViewModelTests: XCTestCase {
 }
 
 private struct PromptAutoRunFetchError: Error {}
+
+private final class PromptLabelPolicyRepositoryMock: PromptLabelPolicyRepositoryProtocol, @unchecked Sendable {
+    var policiesByPromptID: [UUID: [PromptLabelPolicy]] = [:]
+
+    func fetchPolicies(promptId: UUID) throws -> [PromptLabelPolicy] {
+        policiesByPromptID[promptId] ?? []
+    }
+
+    func fetchPolicies(promptIds: Set<UUID>) throws -> [PromptLabelPolicy] {
+        promptIds.flatMap { policiesByPromptID[$0] ?? [] }
+    }
+
+    func replaceTargetLabels(promptId: UUID, labelIds: Set<UUID>) throws {
+        let now = Date()
+        policiesByPromptID[promptId] = labelIds.isEmpty
+            ? []
+            : [PromptLabelPolicy(
+                promptId: promptId,
+                scopeKind: .all,
+                isAvailable: false,
+                createdAt: now,
+                updatedAt: now
+            )] + labelIds.map {
+                PromptLabelPolicy(
+                    promptId: promptId,
+                    scopeKind: .label,
+                    labelId: $0,
+                    isAvailable: true,
+                    createdAt: now,
+                    updatedAt: now
+                )
+            }
+    }
+}
+
+private final class TranscriptionLabelRepositoryMock: TranscriptionMeetingLabelRepositoryProtocol, @unchecked Sendable {
+    var labelIDsByTranscriptionID: [UUID: Set<UUID>] = [:]
+
+    func labels(for _: UUID) throws -> [MeetingLabel] { [] }
+    func labelIDs(for transcriptionId: UUID) throws -> Set<UUID> {
+        labelIDsByTranscriptionID[transcriptionId] ?? []
+    }
+    func add(labelId _: UUID, to _: UUID) throws {}
+    func remove(labelId _: UUID, from _: UUID) throws {}
+    func replaceLabels(for transcriptionId: UUID, with labelIds: Set<UUID>) throws {
+        labelIDsByTranscriptionID[transcriptionId] = labelIds
+    }
+}
 
 private actor RecordingCardGenerator: CardGenerating {
     private(set) var transcriptionIDs: [UUID] = []

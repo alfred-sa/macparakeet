@@ -165,6 +165,7 @@ struct PromptLibraryView: View {
             .ignoresSafeArea()
         }
         .frame(minWidth: 720, minHeight: 700)
+        .onAppear { viewModel.refresh() }
         .alert(
             "Delete Prompt?",
             isPresented: Binding(
@@ -530,6 +531,30 @@ struct PromptLibraryView: View {
                             .clipShape(Capsule())
                             .accessibilityLabel("Uses meeting notes as context")
                     }
+                    let targetLabels = viewModel.targetLabels(for: prompt)
+                    if !targetLabels.isEmpty {
+                        ForEach(Array(targetLabels.prefix(3).enumerated()), id: \.element.id) { index, label in
+                            Label(label.name, systemImage: "tag.fill")
+                                .foregroundStyle(
+                                    MeetingClassificationTint.color(
+                                        for: label.colorToken,
+                                        fallback: index + 1
+                                    )
+                                )
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(
+                                    MeetingClassificationTint.color(
+                                        for: label.colorToken,
+                                        fallback: index + 1
+                                    ).opacity(0.1)
+                                )
+                                .clipShape(Capsule())
+                        }
+                        if targetLabels.count > 3 {
+                            Text("+\(targetLabels.count - 3)")
+                        }
+                    }
                 }
                 .font(DesignSystem.Typography.caption)
                 .foregroundStyle(DesignSystem.Colors.textSecondary)
@@ -689,6 +714,10 @@ struct PromptLibraryView: View {
 
                 collectionPicker(selection: $viewModel.newCollectionID)
 
+                if viewModel.newPromptCategory == .result {
+                    promptLabelTargeting(selection: $viewModel.newTargetLabelIDs)
+                }
+
                 GenerationSettingsEditor(
                     draft: $viewModel.newInferenceSettings,
                     modelOverride: $viewModel.newModelOverride,
@@ -776,6 +805,10 @@ struct PromptLibraryView: View {
 
                     collectionPicker(selection: $viewModel.editingCollectionID)
 
+                    if prompt.category == .result {
+                        promptLabelTargeting(selection: $viewModel.editingTargetLabelIDs)
+                    }
+
                     GenerationSettingsEditor(
                         draft: $viewModel.editingInferenceSettings,
                         modelOverride: $viewModel.editingModelOverride,
@@ -844,6 +877,95 @@ struct PromptLibraryView: View {
             .padding(.leading, 20)
         }
         .foregroundStyle(DesignSystem.Colors.textPrimary)
+    }
+
+    private func promptLabelTargeting(selection: Binding<Set<UUID>>) -> some View {
+        VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+            Text("Available for")
+                .font(DesignSystem.Typography.caption.weight(.medium))
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+            Text("Choose labels to show this prompt only on matching transcriptions.")
+                .font(DesignSystem.Typography.caption)
+                .foregroundStyle(DesignSystem.Colors.textTertiary)
+
+            FlowLayout(spacing: 7) {
+                Button {
+                    selection.wrappedValue = []
+                } label: {
+                    HStack(spacing: 5) {
+                        if selection.wrappedValue.isEmpty {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                        }
+                        Text("All transcriptions")
+                    }
+                    .font(DesignSystem.Typography.caption.weight(.medium))
+                    .foregroundStyle(
+                        selection.wrappedValue.isEmpty
+                            ? DesignSystem.Colors.accent
+                            : DesignSystem.Colors.textSecondary
+                    )
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule().fill(
+                            selection.wrappedValue.isEmpty
+                                ? DesignSystem.Colors.accent.opacity(0.14)
+                                : DesignSystem.Colors.surfaceElevated
+                        )
+                    )
+                    .overlay(
+                        Capsule().strokeBorder(
+                            selection.wrappedValue.isEmpty
+                                ? DesignSystem.Colors.accent.opacity(0.55)
+                                : DesignSystem.Colors.border,
+                            lineWidth: 0.7
+                        )
+                    )
+                }
+                .buttonStyle(.plain)
+
+                ForEach(Array(promptTargetingLabels(selection: selection).enumerated()), id: \.element.id) {
+                    index, label in
+                    let selected = selection.wrappedValue.contains(label.id)
+                    let tint = MeetingClassificationTint.color(for: label.colorToken, fallback: index + 1)
+                    Button {
+                        if selected {
+                            selection.wrappedValue.remove(label.id)
+                        } else {
+                            selection.wrappedValue.insert(label.id)
+                        }
+                    } label: {
+                        HStack(spacing: 5) {
+                            Image(systemName: selected ? "checkmark" : "tag.fill")
+                                .font(.system(size: 9, weight: .bold))
+                            Text(label.name)
+                            if label.isArchived {
+                                Text("Archived")
+                                    .font(DesignSystem.Typography.micro)
+                            }
+                        }
+                        .font(DesignSystem.Typography.caption.weight(.medium))
+                        .foregroundStyle(selected ? tint : DesignSystem.Colors.textSecondary)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(Capsule().fill(tint.opacity(selected ? 0.16 : 0.07)))
+                        .overlay(
+                            Capsule().strokeBorder(
+                                tint.opacity(selected ? 0.55 : 0.24),
+                                lineWidth: selected ? 1 : 0.6
+                            )
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(label.isArchived && !selected)
+                }
+            }
+        }
+    }
+
+    private func promptTargetingLabels(selection: Binding<Set<UUID>>) -> [MeetingLabel] {
+        viewModel.availableLabels.filter { !$0.isArchived || selection.wrappedValue.contains($0.id) }
     }
 
     private func markdownEditor(

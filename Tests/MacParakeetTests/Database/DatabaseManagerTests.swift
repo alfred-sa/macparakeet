@@ -1552,6 +1552,137 @@ final class DatabaseManagerTests: XCTestCase {
         XCTAssertEqual(try transcriptionRepository.fetch(id: meeting.id)?.meetingTypeId, legacyType.id)
     }
 
+    func testPromptLabelPoliciesMigrationPreservesTextIdentifiers() throws {
+        try assertPromptLabelPoliciesMigrationPreservesIdentifiers(storedAsText: true)
+    }
+
+    func testPromptLabelPoliciesMigrationPreservesBlobIdentifiers() throws {
+        try assertPromptLabelPoliciesMigrationPreservesIdentifiers(storedAsText: false)
+    }
+
+    private func assertPromptLabelPoliciesMigrationPreservesIdentifiers(
+        storedAsText: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        var configuration = Configuration()
+        configuration.foreignKeysEnabled = true
+        let queue = try DatabaseQueue(configuration: configuration)
+        var migrator = DatabaseManager.makeMigrator()
+        try migrator.migrate(queue, upTo: "v0.37-general-transcription-labels")
+
+        func identifier() -> DatabaseValue {
+            let uuid = UUID()
+            return storedAsText ? uuid.uuidString.lowercased().databaseValue : uuid.databaseValue
+        }
+        let promptID = identifier()
+        let versionID = identifier()
+        let matchingTypeAndLabelID = identifier()
+        let namedTypeID = identifier()
+        let namedLabelID = identifier()
+        let createdAt = "2026-04-25 10:00:00.000"
+        let updatedAt = "2026-05-02 12:00:00.000"
+        try queue.write { db in
+            try db.execute(
+                sql: """
+                    INSERT INTO prompts (id, name, activeVersionId, createdAt, updatedAt)
+                    VALUES (?, 'Legacy availability', ?, ?, ?)
+                    """,
+                arguments: [promptID, versionID, createdAt, updatedAt]
+            )
+            try db.execute(
+                sql: """
+                    INSERT INTO prompt_versions (id, promptId, versionNumber, content, origin, createdAt)
+                    VALUES (?, ?, 1, 'Preserve availability.', 'user', ?)
+                    """,
+                arguments: [versionID, promptID, createdAt]
+            )
+            for (typeID, labelID, typeName, labelName, isAvailable) in [
+                (matchingTypeAndLabelID, matchingTypeAndLabelID, "Shared ID", "Shared ID", true),
+                (namedTypeID, namedLabelID, "Résumé", "resume", false),
+            ] {
+                try db.execute(
+                    sql: "INSERT INTO meeting_types (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)",
+                    arguments: [typeID, typeName, createdAt, updatedAt]
+                )
+                try db.execute(
+                    sql: "INSERT INTO meeting_labels (id, name, createdAt, updatedAt) VALUES (?, ?, ?, ?)",
+                    arguments: [labelID, labelName, createdAt, updatedAt]
+                )
+                try db.execute(
+                    sql: """
+                        INSERT INTO prompt_meeting_policies (
+                            id, promptId, scopeKind, meetingTypeId, isAvailable, isAutoRun, createdAt, updatedAt
+                        ) VALUES (?, ?, 'type', ?, ?, 0, ?, ?)
+                        """,
+                    arguments: [UUID(), promptID, typeID, isAvailable, createdAt, updatedAt]
+                )
+            }
+            try db.execute(
+                sql: """
+                    INSERT INTO prompt_meeting_policies (
+                        id, promptId, scopeKind, isAvailable, isAutoRun, createdAt, updatedAt
+                    ) VALUES (?, ?, 'all', 0, 0, ?, ?)
+                    """,
+                arguments: [UUID(), promptID, createdAt, updatedAt]
+            )
+        }
+
+        try migrator.migrate(queue)
+
+        try queue.read { db in
+            let storageType = storedAsText ? "text" : "blob"
+            let prompt = try XCTUnwrap(
+                Row.fetchOne(
+                    db, sql: "SELECT id, typeof(id) AS storageType FROM prompts WHERE id = ?",
+                    arguments: [promptID]),
+                file: file, line: line
+            )
+            XCTAssertEqual(prompt["id"] as DatabaseValue, promptID, file: file, line: line)
+            XCTAssertEqual(prompt["storageType"] as String, storageType, file: file, line: line)
+
+            let policies = try Row.fetchAll(
+                db,
+                sql: """
+                    SELECT policy.*, typeof(policy.promptId) AS promptStorageType,
+                           typeof(policy.labelId) AS labelStorageType,
+                           label.id AS parentLabelId, typeof(label.id) AS parentLabelStorageType
+                    FROM prompt_label_policies AS policy
+                    LEFT JOIN meeting_labels AS label ON label.id = policy.labelId
+                    WHERE policy.promptId = ?
+                    """,
+                arguments: [promptID]
+            )
+            XCTAssertEqual(policies.count, 3, file: file, line: line)
+            for policy in policies {
+                XCTAssertEqual(policy["promptId"] as DatabaseValue, promptID, file: file, line: line)
+                XCTAssertEqual(policy["promptStorageType"] as String, storageType, file: file, line: line)
+                XCTAssertEqual(policy["createdAt"] as String, createdAt, file: file, line: line)
+                XCTAssertEqual(policy["updatedAt"] as String, updatedAt, file: file, line: line)
+                if policy["scopeKind"] as String == "all" {
+                    XCTAssertEqual(policy["labelId"] as DatabaseValue, .null, file: file, line: line)
+                    XCTAssertFalse(policy["isAvailable"] as Bool, file: file, line: line)
+                } else {
+                    let labelID = policy["labelId"] as DatabaseValue
+                    XCTAssertTrue([matchingTypeAndLabelID, namedLabelID].contains(labelID), file: file, line: line)
+                    XCTAssertEqual(policy["parentLabelId"] as DatabaseValue, labelID, file: file, line: line)
+                    XCTAssertEqual(policy["labelStorageType"] as String, storageType, file: file, line: line)
+                    XCTAssertEqual(policy["parentLabelStorageType"] as String, storageType, file: file, line: line)
+                    XCTAssertEqual(
+                        policy["isAvailable"] as Bool, labelID == matchingTypeAndLabelID, file: file, line: line
+                    )
+                }
+            }
+            XCTAssertEqual(
+                try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM prompt_meeting_policies WHERE promptId = ?",
+                    arguments: [promptID]),
+                3, "Legacy policies remain available for downgrade compatibility", file: file, line: line
+            )
+            XCTAssertTrue(try Row.fetchAll(db, sql: "PRAGMA foreign_key_check").isEmpty, file: file, line: line)
+        }
+    }
+
     func testTransformWorkbenchCleanupMigrationPreservesRestoredHistoryWhenRerun() throws {
         let dbPath = FileManager.default.temporaryDirectory
             .appendingPathComponent("transform_workbench_cleanup_\(UUID().uuidString).db")

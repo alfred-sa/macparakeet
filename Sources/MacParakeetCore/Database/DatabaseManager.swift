@@ -1855,6 +1855,102 @@ public final class DatabaseManager: Sendable {
             }
         }
 
+        // v0.38 — Prompt availability is now label-based for every
+        // transcription source. Keep the meeting-type policies for downgrade
+        // compatibility, but copy their effective scopes to the new model.
+        migrator.registerMigration("v0.38-prompt-label-policies") { db in
+            try db.create(table: "prompt_label_policies") { t in
+                t.column("id", .text).primaryKey()
+                t.column("promptId", .text)
+                    .notNull()
+                    .references("prompts", onDelete: .cascade)
+                t.column("scopeKind", .text).notNull()
+                t.column("labelId", .text)
+                    .references("meeting_labels", onDelete: .cascade)
+                t.column("isAvailable", .boolean).notNull()
+                t.column("createdAt", .text).notNull()
+                t.column("updatedAt", .text).notNull()
+                t.check(
+                    sql:
+                        "(scopeKind = 'all' AND labelId IS NULL) OR (scopeKind = 'label' AND labelId IS NOT NULL)"
+                )
+            }
+            try db.execute(
+                sql: """
+                    CREATE UNIQUE INDEX idx_prompt_label_policies_all
+                    ON prompt_label_policies(promptId)
+                    WHERE scopeKind = 'all'
+                    """
+            )
+            try db.execute(
+                sql: """
+                    CREATE UNIQUE INDEX idx_prompt_label_policies_label
+                    ON prompt_label_policies(promptId, labelId)
+                    WHERE scopeKind = 'label'
+                    """
+            )
+            try db.create(
+                index: "idx_prompt_label_policies_label_lookup",
+                on: "prompt_label_policies",
+                columns: ["labelId", "promptId"]
+            )
+
+            let labelRows = try Row.fetchAll(db, sql: "SELECT * FROM meeting_labels")
+            let labels = try labelRows.map { try MeetingLabel(row: $0) }
+            let storedLabelIDs = Dictionary(
+                uniqueKeysWithValues: labelRows.map { row in
+                    (row["id"] as UUID, row["id"] as DatabaseValue)
+                }
+            )
+            let labelsByID = Dictionary(uniqueKeysWithValues: labels.map { ($0.id, $0) })
+            let labelsByName = Dictionary(
+                labels.map { ($0.name.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil), $0) },
+                uniquingKeysWith: { first, _ in first }
+            )
+            let typesByID = Dictionary(uniqueKeysWithValues: try MeetingType.fetchAll(db).map { ($0.id, $0) })
+
+            for row in try Row.fetchAll(db, sql: "SELECT * FROM prompt_meeting_policies") {
+                let legacy = try PromptMeetingPolicy(row: row)
+                let scope: PromptLabelPolicy.ScopeKind
+                let labelID: UUID?
+                switch legacy.scopeKind {
+                case .all:
+                    scope = .all
+                    labelID = nil
+                case .type:
+                    guard let typeID = legacy.meetingTypeId,
+                        let meetingType = typesByID[typeID]
+                    else { continue }
+                    scope = .label
+                    labelID = labelsByID[typeID]?.id
+                        ?? labelsByName[
+                            meetingType.name.folding(
+                                options: [.caseInsensitive, .diacriticInsensitive],
+                                locale: nil
+                            )
+                        ]?.id
+                    guard labelID != nil else { continue }
+                }
+
+                // Copy foreign keys as stored: decoding a TEXT UUID and then
+                // encoding it through a record changes it to a BLOB, which no
+                // longer matches the original parent row in SQLite.
+                let promptID: DatabaseValue = row["promptId"]
+                let storedLabelID = labelID.flatMap { storedLabelIDs[$0] } ?? .null
+                try db.execute(
+                    sql: """
+                        INSERT OR IGNORE INTO prompt_label_policies (
+                            id, promptId, scopeKind, labelId, isAvailable, createdAt, updatedAt
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                    arguments: [
+                        UUID(), promptID, scope.rawValue, storedLabelID, legacy.isAvailable,
+                        row["createdAt"] as DatabaseValue, row["updatedAt"] as DatabaseValue,
+                    ]
+                )
+            }
+        }
+
         return migrator
     }
 

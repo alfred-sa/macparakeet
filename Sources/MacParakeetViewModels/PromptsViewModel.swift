@@ -62,6 +62,8 @@ public final class PromptsViewModel {
     public private(set) var deletedPrompts: [Prompt] = []
     public private(set) var collections: [PromptCollection] = []
     public private(set) var promptVersions: [PromptVersion] = []
+    public private(set) var availableLabels: [MeetingLabel] = []
+    public private(set) var labelIDsByPromptID: [UUID: Set<UUID>] = [:]
     public var newName: String = "" {
         didSet { resetValidationError() }
     }
@@ -75,6 +77,7 @@ public final class PromptsViewModel {
         didSet { resetValidationError() }
     }
     public var newCollectionID: UUID?
+    public var newTargetLabelIDs: Set<UUID> = []
     public var newPromptCategory: Prompt.Category = .result
     public var newCollectionName = ""
     public var newInferenceSettings = InferenceSettingsDraft() {
@@ -96,6 +99,7 @@ public final class PromptsViewModel {
         didSet { resetValidationError() }
     }
     public var editingCollectionID: UUID?
+    public var editingTargetLabelIDs: Set<UUID> = []
     public private(set) var newInferenceValidationErrors: InferenceValidationErrors = [:]
     public private(set) var editingInferenceValidationErrors: InferenceValidationErrors = [:]
     public var errorMessage: String?
@@ -106,6 +110,8 @@ public final class PromptsViewModel {
     private var versionRepo: PromptVersionRepositoryProtocol?
     private var collectionRepo: PromptCollectionRepositoryProtocol?
     private var editingService: PromptEditingServiceProtocol?
+    private var labelRepository: MeetingLabelRepositoryProtocol?
+    private var labelPolicyRepository: PromptLabelPolicyRepositoryProtocol?
 
     public init() {}
 
@@ -113,15 +119,20 @@ public final class PromptsViewModel {
         repo: PromptRepositoryProtocol,
         versionRepo: PromptVersionRepositoryProtocol? = nil,
         collectionRepo: PromptCollectionRepositoryProtocol? = nil,
-        editingService: PromptEditingServiceProtocol? = nil
+        editingService: PromptEditingServiceProtocol? = nil,
+        labelRepository: MeetingLabelRepositoryProtocol? = nil,
+        labelPolicyRepository: PromptLabelPolicyRepositoryProtocol? = nil
     ) {
         self.repo = repo
         self.versionRepo = versionRepo
         self.collectionRepo = collectionRepo
         self.editingService = editingService
+        self.labelRepository = labelRepository
+        self.labelPolicyRepository = labelPolicyRepository
         loadPrompts()
         loadDeletedPrompts()
         loadCollections()
+        loadLabels()
     }
 
     public func loadPrompts() {
@@ -130,9 +141,17 @@ public final class PromptsViewModel {
             managedPrompts = try repo.fetchAll()
             prompts = managedPrompts.filter { $0.category == .result }
             errorMessage = nil
+            loadPromptLabelPolicies()
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    public func refresh() {
+        loadPrompts()
+        loadDeletedPrompts()
+        loadCollections()
+        loadLabels()
     }
 
     public func addPrompt() {
@@ -179,12 +198,19 @@ public final class PromptsViewModel {
 
         do {
             try repo.save(prompt)
+            if prompt.category == .result {
+                try labelPolicyRepository?.replaceTargetLabels(
+                    promptId: prompt.id,
+                    labelIds: newTargetLabelIDs
+                )
+            }
             Telemetry.send(.promptCreated)
             newName = ""
             newContent = ""
             newIncludeMeetingNotes = false
             newModelOverride = ""
             newCollectionID = nil
+            newTargetLabelIDs = []
             newPromptCategory = .result
             newInferenceSettings = InferenceSettingsDraft()
             newInferenceValidationErrors = [:]
@@ -243,12 +269,19 @@ public final class PromptsViewModel {
 
         do {
             try repo.save(updated)
+            if updated.category == .result {
+                try labelPolicyRepository?.replaceTargetLabels(
+                    promptId: updated.id,
+                    labelIds: editingTargetLabelIDs
+                )
+            }
             Telemetry.send(.promptUpdated)
             editingPrompt = nil
             editingIncludeMeetingNotes = false
             editingInferenceSettings = InferenceSettingsDraft()
             editingModelOverride = ""
             editingCollectionID = nil
+            editingTargetLabelIDs = []
             editingInferenceValidationErrors = [:]
             promptVersions = []
             errorMessage = nil
@@ -263,6 +296,7 @@ public final class PromptsViewModel {
         editingInferenceSettings = InferenceSettingsDraft(settings: prompt.inferenceSettings)
         editingModelOverride = prompt.modelOverride ?? ""
         editingCollectionID = prompt.collectionId
+        editingTargetLabelIDs = labelIDsByPromptID[prompt.id] ?? []
         editingInferenceValidationErrors = [:]
         editingPrompt = prompt
         loadVersions(for: prompt.id)
@@ -274,6 +308,7 @@ public final class PromptsViewModel {
         editingInferenceSettings = InferenceSettingsDraft()
         editingModelOverride = ""
         editingCollectionID = nil
+        editingTargetLabelIDs = []
         editingInferenceValidationErrors = [:]
         promptVersions = []
     }
@@ -285,6 +320,7 @@ public final class PromptsViewModel {
             || editingIncludeMeetingNotes != prompt.includeMeetingNotes
             || normalizedOptional(editingModelOverride) != prompt.modelOverride
             || editingCollectionID != prompt.collectionId
+            || editingTargetLabelIDs != (labelIDsByPromptID[prompt.id] ?? [])
     }
 
     @discardableResult
@@ -512,6 +548,11 @@ public final class PromptsViewModel {
         }
     }
 
+    public func targetLabels(for prompt: Prompt) -> [MeetingLabel] {
+        let ids = labelIDsByPromptID[prompt.id] ?? []
+        return availableLabels.filter { ids.contains($0.id) }
+    }
+
     private func isUniqueName(
         _ name: String,
         excluding promptID: UUID? = nil,
@@ -545,6 +586,45 @@ public final class PromptsViewModel {
             collections = try collectionRepo.fetchAll()
         } catch {
             collections = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadLabels() {
+        guard let labelRepository else {
+            availableLabels = []
+            return
+        }
+        do {
+            availableLabels = try labelRepository.fetchAll(includeArchived: true)
+        } catch {
+            availableLabels = []
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func loadPromptLabelPolicies() {
+        guard let labelPolicyRepository else {
+            labelIDsByPromptID = [:]
+            return
+        }
+        do {
+            let policies = try labelPolicyRepository.fetchPolicies(promptIds: Set(prompts.map(\.id)))
+            let grouped = Dictionary(grouping: policies, by: \.promptId)
+            labelIDsByPromptID = grouped.reduce(into: [:]) { result, entry in
+                let hasRestrictedFallback = entry.value.contains {
+                    $0.scopeKind == .all && !$0.isAvailable
+                }
+                guard hasRestrictedFallback else {
+                    result[entry.key] = []
+                    return
+                }
+                result[entry.key] = Set(entry.value.compactMap {
+                    $0.scopeKind == .label && $0.isAvailable ? $0.labelId : nil
+                })
+            }
+        } catch {
+            labelIDsByPromptID = [:]
             errorMessage = error.localizedDescription
         }
     }

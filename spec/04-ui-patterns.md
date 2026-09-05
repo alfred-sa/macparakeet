@@ -162,6 +162,13 @@ types. The product does not add a second, user-defined "meeting type" taxonomy.
 Legacy custom meeting types are migrated to labels without removing the legacy
 database value, preserving downgrade compatibility.
 
+Result prompts expose an **Available for** label cloud in the Prompt Manager.
+**All transcriptions** is the default. Selecting one or more colored labels
+makes the prompt available when any selected label is present, across meetings,
+podcasts, videos, and local files. The same availability gate applies before
+automatic generation; the prompt's existing per-source Auto-Run setting remains
+the source of truth for whether matching content runs automatically.
+
 Library's label filter opens a compact popover with an integrated search field.
 Its options use colored, wrapping chips instead of vertical menu rows, allowing
 multi-selection at a glance in every source tab.

@@ -186,7 +186,9 @@ final class AppEnvironmentConfigurer {
             repo: env.promptRepo,
             versionRepo: env.promptVersionRepo,
             collectionRepo: env.promptCollectionRepo,
-            editingService: env.promptEditingService
+            editingService: env.promptEditingService,
+            labelRepository: env.meetingLabelRepo,
+            labelPolicyRepository: env.promptLabelPolicyRepo
         )
         transformsViewModel.configure(
             repo: env.promptRepo,
@@ -227,6 +229,8 @@ final class AppEnvironmentConfigurer {
             promptRepo: env.promptRepo,
             promptResultRepo: env.promptResultRepo,
             promptMeetingPolicyRepository: env.promptMeetingPolicyRepo,
+            promptLabelPolicyRepository: env.promptLabelPolicyRepo,
+            transcriptionLabelRepository: env.transcriptionMeetingLabelRepo,
             // Without this, `fetchUserNotes` short-circuits to `nil`, which
             // would silently render `{{userNotes}}` as an empty string in any
             // user-defined prompt that references it, and feed `nil` userNotes

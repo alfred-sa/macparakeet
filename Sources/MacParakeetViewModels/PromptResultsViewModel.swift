@@ -5,6 +5,12 @@ import OSLog
 @MainActor
 @Observable
 public final class PromptResultsViewModel {
+    private struct ResolvedPrompt {
+        let prompt: Prompt
+        let isAutoRun: Bool
+        let effectiveSortOrder: Int
+    }
+
     private struct PromptProvenance {
         let promptId: UUID?
         let promptVersionId: UUID?
@@ -115,6 +121,8 @@ public final class PromptResultsViewModel {
     private var cardGenerator: CardGenerating?
     private var promptRepo: PromptRepositoryProtocol?
     private var promptApplicabilityResolver: PromptApplicabilityResolver?
+    private var promptLabelPolicyRepository: PromptLabelPolicyRepositoryProtocol?
+    private var transcriptionLabelRepository: TranscriptionMeetingLabelRepositoryProtocol?
     private var promptResultRepo: PromptResultRepositoryProtocol?
     /// Read-only access to the underlying transcription so prompt assembly
     /// can pull `userNotes` for `{{userNotes}}` substitution and snapshotting
@@ -207,6 +215,8 @@ public final class PromptResultsViewModel {
         promptRepo: PromptRepositoryProtocol?,
         promptResultRepo: PromptResultRepositoryProtocol?,
         promptMeetingPolicyRepository: PromptMeetingPolicyRepositoryProtocol? = nil,
+        promptLabelPolicyRepository: PromptLabelPolicyRepositoryProtocol? = nil,
+        transcriptionLabelRepository: TranscriptionMeetingLabelRepositoryProtocol? = nil,
         transcriptionRepo: TranscriptionRepositoryProtocol? = nil,
         meetingArtifactStore: MeetingArtifactStoring? = nil,
         speakerAttributionReader: SpeakerAttributionReading? = nil,
@@ -221,6 +231,8 @@ public final class PromptResultsViewModel {
         promptApplicabilityResolver = promptMeetingPolicyRepository.map {
             PromptApplicabilityResolver(policyRepository: $0)
         }
+        self.promptLabelPolicyRepository = promptLabelPolicyRepository
+        self.transcriptionLabelRepository = transcriptionLabelRepository
         self.transcriptionRepo = transcriptionRepo
         self.meetingArtifactStore = meetingArtifactStore
         self.speakerAttributionReader = speakerAttributionReader
@@ -291,9 +303,13 @@ public final class PromptResultsViewModel {
     public func loadVisiblePrompts() {
         do {
             let context = try currentTranscriptionID.flatMap { try transcriptionRepo?.fetch(id: $0) }
+            let labelIDs = try currentTranscriptionID.map {
+                try transcriptionLabelRepository?.labelIDs(for: $0) ?? []
+            } ?? []
             try loadVisiblePrompts(
                 sourceType: context?.sourceType,
-                meetingTypeId: context?.meetingTypeId
+                meetingTypeId: context?.meetingTypeId,
+                transcriptionLabelIDs: labelIDs
             )
         } catch {
             errorMessage = error.localizedDescription
@@ -310,7 +326,14 @@ public final class PromptResultsViewModel {
         meetingTypeId: UUID?
     ) {
         do {
-            try loadVisiblePrompts(sourceType: Optional(sourceType), meetingTypeId: meetingTypeId)
+            let labelIDs = try currentTranscriptionID.map {
+                try transcriptionLabelRepository?.labelIDs(for: $0) ?? []
+            } ?? []
+            try loadVisiblePrompts(
+                sourceType: Optional(sourceType),
+                meetingTypeId: meetingTypeId,
+                transcriptionLabelIDs: labelIDs
+            )
         } catch {
             errorMessage = error.localizedDescription
             visiblePrompts = []
@@ -320,21 +343,23 @@ public final class PromptResultsViewModel {
 
     private func loadVisiblePrompts(
         sourceType: Transcription.SourceType?,
-        meetingTypeId: UUID?
+        meetingTypeId: UUID?,
+        transcriptionLabelIDs: Set<UUID>
     ) throws {
         guard let promptRepo else { return }
         let prompts = try promptRepo.fetchVisible(category: .result)
         let resolvedPrompts = try resolveAvailablePrompts(
             prompts,
             sourceType: sourceType,
-            meetingTypeId: meetingTypeId
+            meetingTypeId: meetingTypeId,
+            transcriptionLabelIDs: transcriptionLabelIDs
         )
         visiblePrompts = resolvedPrompts.map(\.prompt)
         if let selectedPrompt,
            let refreshed = visiblePrompts.first(where: { $0.id == selectedPrompt.id }) {
             self.selectedPrompt = refreshed
         } else {
-            self.selectedPrompt = resolvedPrompts.first(where: { $0.resolution?.isAutoRun == true })?.prompt
+            self.selectedPrompt = resolvedPrompts.first(where: \.isAutoRun)?.prompt
                 ?? visiblePrompts.first(where: { $0.isAutoRun })
                 ?? visiblePrompts.first
         }
@@ -344,10 +369,42 @@ public final class PromptResultsViewModel {
     private func resolveAvailablePrompts(
         _ prompts: [Prompt],
         sourceType: Transcription.SourceType?,
-        meetingTypeId: UUID?
-    ) throws -> [(prompt: Prompt, resolution: PromptApplicabilityResolution?)] {
+        meetingTypeId: UUID?,
+        transcriptionLabelIDs: Set<UUID>
+    ) throws -> [ResolvedPrompt] {
+        guard let sourceType else {
+            return prompts.map {
+                ResolvedPrompt(prompt: $0, isAutoRun: $0.isAutoRun, effectiveSortOrder: $0.sortOrder)
+            }
+        }
+
+        if let promptLabelPolicyRepository {
+            let policies = try promptLabelPolicyRepository.fetchPolicies(promptIds: Set(prompts.map(\.id)))
+            let policiesByPromptID = Dictionary(grouping: policies, by: \.promptId)
+            return prompts.compactMap { prompt in
+                let resolution = PromptLabelApplicabilityResolver.resolve(
+                    prompt: prompt,
+                    sourceType: sourceType,
+                    transcriptionLabelIDs: transcriptionLabelIDs,
+                    policies: policiesByPromptID[prompt.id] ?? []
+                )
+                guard resolution.isAvailable else { return nil }
+                return ResolvedPrompt(
+                    prompt: prompt,
+                    isAutoRun: resolution.isAutoRun,
+                    effectiveSortOrder: prompt.sortOrder
+                )
+            }.sorted(by: Self.resolvedPromptOrdering)
+        }
+
         guard sourceType == .meeting, let promptApplicabilityResolver else {
-            return prompts.map { ($0, nil) }
+            return prompts.map {
+                ResolvedPrompt(
+                    prompt: $0,
+                    isAutoRun: $0.autoRuns(for: sourceType),
+                    effectiveSortOrder: $0.sortOrder
+                )
+            }
         }
         return try prompts.compactMap { prompt in
             let resolution = try promptApplicabilityResolver.resolve(
@@ -355,16 +412,22 @@ public final class PromptResultsViewModel {
                 sourceType: .meeting,
                 meetingTypeId: meetingTypeId
             )
-            return resolution.isAvailable ? (prompt, resolution) : nil
+            return resolution.isAvailable
+                ? ResolvedPrompt(
+                    prompt: prompt,
+                    isAutoRun: resolution.isAutoRun,
+                    effectiveSortOrder: resolution.effectiveSortOrder
+                )
+                : nil
         }.sorted(by: Self.resolvedPromptOrdering)
     }
 
     private static func resolvedPromptOrdering(
-        _ lhs: (prompt: Prompt, resolution: PromptApplicabilityResolution?),
-        _ rhs: (prompt: Prompt, resolution: PromptApplicabilityResolution?)
+        _ lhs: ResolvedPrompt,
+        _ rhs: ResolvedPrompt
     ) -> Bool {
-        let lhsOrder = lhs.resolution?.effectiveSortOrder ?? lhs.prompt.sortOrder
-        let rhsOrder = rhs.resolution?.effectiveSortOrder ?? rhs.prompt.sortOrder
+        let lhsOrder = lhs.effectiveSortOrder
+        let rhsOrder = rhs.effectiveSortOrder
         if lhsOrder != rhsOrder { return lhsOrder < rhsOrder }
         let nameOrder = lhs.prompt.name.localizedCaseInsensitiveCompare(rhs.prompt.name)
         if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
@@ -494,13 +557,24 @@ public final class PromptResultsViewModel {
 
         let autoPrompts: [Prompt]
         do {
-            if sourceType == .meeting, promptApplicabilityResolver != nil {
+            if promptLabelPolicyRepository != nil {
+                let prompts = try promptRepo?.fetchVisible(category: .result) ?? []
+                let labelIDs = try transcriptionLabelRepository?.labelIDs(for: transcriptionId) ?? []
+                autoPrompts = try resolveAvailablePrompts(
+                    prompts,
+                    sourceType: sourceType,
+                    meetingTypeId: meetingTypeId,
+                    transcriptionLabelIDs: labelIDs
+                ).filter(\.isAutoRun)
+                    .map(\.prompt)
+            } else if sourceType == .meeting, promptApplicabilityResolver != nil {
                 let prompts = try promptRepo?.fetchVisible(category: .result) ?? []
                 autoPrompts = try resolveAvailablePrompts(
                     prompts,
                     sourceType: sourceType,
-                    meetingTypeId: meetingTypeId
-                ).filter { $0.resolution?.isAutoRun == true }
+                    meetingTypeId: meetingTypeId,
+                    transcriptionLabelIDs: []
+                ).filter(\.isAutoRun)
                     .map(\.prompt)
             } else {
                 autoPrompts = try promptRepo?.fetchAutoRunPrompts(for: sourceType) ?? []

@@ -27,6 +27,7 @@ final class AppEnvironment {
     let chatConversationRepo: ChatConversationRepository
     let promptRepo: PromptRepository
     let promptMeetingPolicyRepo: PromptMeetingPolicyRepository
+    let promptLabelPolicyRepo: PromptLabelPolicyRepository
     let promptVersionRepo: PromptVersionRepository
     let promptCollectionRepo: PromptCollectionRepository
     let promptEditingService: PromptEditingService
@@ -91,6 +92,7 @@ final class AppEnvironment {
         chatConversationRepo = ChatConversationRepository(dbQueue: databaseManager.dbQueue)
         promptRepo = PromptRepository(dbQueue: databaseManager.dbQueue)
         promptMeetingPolicyRepo = PromptMeetingPolicyRepository(dbQueue: databaseManager.dbQueue)
+        promptLabelPolicyRepo = PromptLabelPolicyRepository(dbQueue: databaseManager.dbQueue)
         promptVersionRepo = PromptVersionRepository(dbQueue: databaseManager.dbQueue)
         promptCollectionRepo = PromptCollectionRepository(dbQueue: databaseManager.dbQueue)
         promptEditingService = PromptEditingService(dbQueue: databaseManager.dbQueue)

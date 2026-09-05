@@ -21,6 +21,37 @@ final class PromptsViewModelTests: XCTestCase {
         XCTAssertTrue(viewModel.managedPrompts.contains(where: { $0.name == "Polish" }))
     }
 
+    func testCreatingPromptPersistsSelectedLabelTargets() throws {
+        let manager = try DatabaseManager()
+        let promptRepository = PromptRepository(dbQueue: manager.dbQueue)
+        let labelRepository = MeetingLabelRepository(dbQueue: manager.dbQueue)
+        let policyRepository = PromptLabelPolicyRepository(dbQueue: manager.dbQueue)
+        let customer = MeetingLabel(name: "Customer")
+        try labelRepository.save(customer)
+        let subject = PromptsViewModel()
+        subject.configure(
+            repo: promptRepository,
+            labelRepository: labelRepository,
+            labelPolicyRepository: policyRepository
+        )
+        subject.newName = "Customer follow-up"
+        subject.newContent = "Draft the next steps."
+        subject.newTargetLabelIDs = [customer.id]
+
+        subject.addPrompt()
+
+        let created = try XCTUnwrap(
+            promptRepository.fetchAll().first { $0.name == "Customer follow-up" }
+        )
+        XCTAssertEqual(subject.labelIDsByPromptID[created.id], [customer.id])
+        XCTAssertEqual(
+            Set(try policyRepository.fetchPolicies(promptId: created.id).compactMap {
+                $0.scopeKind == .label && $0.isAvailable ? $0.labelId : nil
+            }),
+            [customer.id]
+        )
+    }
+
     func testAddPromptCreatesCustomSummaryPrompt() {
         viewModel.newName = "Standup Notes"
         viewModel.newContent = "Summarize as a daily standup."
