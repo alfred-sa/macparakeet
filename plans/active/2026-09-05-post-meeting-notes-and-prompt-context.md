@@ -1,9 +1,11 @@
 # Post-Meeting Notes and Opt-In Prompt Context
 
-> **Status:** IMPLEMENTED — saved-meeting notes, opt-in prompt context, and the
-> shared rich Markdown renderer are implemented and locally verified on
-> 2026-09-05. Visual/accessibility QA and a release-bundle size comparison
-> remain before PR/release.
+> **Status:** IMPLEMENTED — VISUAL QA FOUND ACCESSIBILITY BLOCKERS. Saved-meeting
+> notes, opt-in prompt context, and the shared rich Markdown renderer are
+> implemented and locally verified on 2026-09-05. Real-app QA passed the visual
+> rendering paths but found the table-selection and table-action-label gaps
+> recorded below. Those gaps and a release-bundle size comparison remain before
+> PR/release.
 > **Priority:** P2
 > **Date:** 2026-09-05
 > **Issues:** [#889](https://github.com/moona3k/macparakeet/issues/889),
@@ -492,6 +494,43 @@ fixtures:
 Manual QA must cover completed and streaming Summary output, saved Chat, live
 Ask, a wide table in the 360 px panel, text selection across blocks/cells,
 mouse and keyboard link activation, VoiceOver task states, and light/dark mode.
+
+### Visual QA record — 2026-09-05
+
+QA ran against commit `023809123cb4` in `MacParakeet-Dev.app`, with an isolated
+database under `/tmp` so no real meeting data was changed.
+
+Passed in the real app:
+
+- saved-meeting notes display and edit/save flow, including a persisted canonical
+  note while the existing Prompt Result retained its earlier notes snapshot;
+- completed Prompt Result rendering in light and dark appearances;
+- saved Chat rendering through the same Markdown façade;
+- headings, emphasis, inline code, HTTP link styling, block quotes, tables,
+  checked/unchecked task lists, nested lists, separators, and highlighted code;
+- selectable ordinary Markdown text;
+- accessibility exposure for headings, links, and checked/unchecked task state;
+- pointer reveal of table Copy and Download actions.
+
+Blocking findings:
+
+- Direct table-cell selection is unavailable on macOS: the upstream table is
+  exposed as a non-selectable accessibility text element even though the outer
+  renderer enables text selection. This fails the table-cell selection gate.
+- The revealed Download action is announced as `downloadArrow` rather than a
+  user-facing label such as “Download table”. This fails the table-action
+  VoiceOver gate. The Copy action is labelled correctly.
+
+Still to run after those blockers are fixed:
+
+- live partial/streaming Prompt Result and live Ask visual smoke tests;
+- keyboard activation of an allowed link;
+- explicit 360 px live-meeting-panel overflow QA;
+- release-bundle size comparison.
+
+The already recorded upstream `v0.7.0` ordered-list limitation was reproduced:
+an authored list starting at `3.` renders visually as `1.`. It remains a known
+presentation limitation rather than a newly introduced regression.
 
 ## Test Plan
 
