@@ -49,7 +49,10 @@ the `EquatableMacros` plugin, so Xcode builds must keep
 `-skipMacroValidation`; otherwise dependency resolution stops with
 `Macro “EquatableMacros” ... must be enabled before it can be used`. The dev
 script owns this flag. Do not install another Markdown renderer or edit the
-package checkout to work around the error.
+package checkout to work around the error. The script must also stop every
+running MacParakeet process before it rebuilds or re-signs the Dev bundle.
+Re-signing a bundle in place while macOS is executing it can cause a delayed
+`SIGKILL (Code Signature Invalid)` when a menu or sheet loads another page.
 
 Iterate on focused tests ONLY (`swift test --filter <AreaTests>` for the
 areas the diff touches). Run the full `swift test` suite AT MOST ONCE per
