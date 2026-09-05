@@ -167,6 +167,13 @@ scripts/dev/run_app.sh    # build, sign, launch
 
 The dev script creates a signed `.app` bundle so macOS grants mic and accessibility permissions. It disables target-level Xcode signing, then signs the finished bundle with the best available local identity. Override with `MACPARAKEET_CODESIGN_IDENTITY="Your Identity"` if needed.
 
+Discover is included by default. To compile a local app without any Discover
+code, fallback content, UI, cache setup, or network endpoints:
+
+```bash
+MACPARAKEET_DISABLE_DISCOVER=1 scripts/dev/run_app.sh
+```
+
 ## Command line and agent automation
 
 `macparakeet-cli` is the public automation surface for MacParakeet: the canonical Swift-native interface to Parakeet TDT on Apple Silicon, plus the scriptable entry point for MacParakeet's local library, model cache, prompts, meetings, and JSON contracts. Use [`integrations/README.md`](integrations/README.md) for the agent-facing automation guide and [`Sources/CLI/CHANGELOG.md`](Sources/CLI/CHANGELOG.md) for compatibility notes.
@@ -278,7 +285,7 @@ All speech recognition runs locally. Parakeet uses the Neural Engine; optional N
 - **Opt-out telemetry.** Non-identifying usage analytics and crash reporting go to a self-hosted endpoint only when telemetry is enabled. No persistent IDs, no IP storage, and no transcript/audio content is transmitted. [Source code is right here](Sources/MacParakeetCore/Services/Telemetry/TelemetryService.swift) — verify it yourself.
 - **Temp files cleaned up.** Audio deleted after transcription unless you save it. Saved meeting audio follows your retention setting (kept by default).
 
-**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Sparkle checks for app updates. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Telemetry and crash reports go to our self-hosted server unless you opt out. Core dictation and transcription stay fully offline.
+**What does use the network:** AI summaries, chat/Meeting Ask, AI Formatter, and Transforms connect to configured LLM providers, or to whatever service a configured CLI tool chooses to use, when you choose them. Discover refreshes its feed at launch and submits text only when you explicitly send feedback from that screen; builds compiled with `MACPARAKEET_DISABLE_DISCOVER=1` contain neither endpoint. Sparkle checks for app updates. Media URL transcription downloads via yt-dlp; Apple Podcasts links query the public iTunes lookup API to find the episode audio, then download it. Telemetry and crash reports go to our self-hosted server unless you opt out. Core dictation and transcription stay fully offline.
 
 **Note:** Builds from source also send telemetry by default. Opt out in Settings or set `MACPARAKEET_TELEMETRY_URL` to override.
 
