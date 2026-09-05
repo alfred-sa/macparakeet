@@ -71,8 +71,9 @@ The sidebar uses NavigationSplitView with flat items (icon + label):
 - **Library** (`square.grid.2x2`) -- All transcriptions; filter chips switch between thumbnail grid (All/YouTube/Local/Favorites) and date-grouped list (Meetings)
 - **Dictations** (`clock.arrow.circlepath`) -- Flat history list with bottom bar player
 - **Meetings** (`person.2.wave.2`) -- Workflow space for upcoming, live, and saved meeting work; visible when `AppFeatures.meetingRecordingEnabled` is true
-- **Vocabulary** (`book.fill`) -- Processing mode, pipeline guide, custom words & snippets management
+- **Prompts** (`text.quote`) -- First-class prompt manager for versioned result prompts and Transforms
 - **Transforms** (`sparkles`) -- Saved selected-text rewrites backed by `.transform` prompt rows; visible when `AppFeatures.transformsEnabled` is true
+- **Vocabulary** (`book.fill`) -- Processing mode, pipeline guide, custom words & snippets management
 - **Feedback** (`bubble.left.and.text.bubble.right`) -- Bug reports, feature requests, community link
 - **Settings** (`gearshape`) -- Dictation prefs, meeting recording prefs, storage, permissions
 
@@ -146,6 +147,20 @@ meeting is recording. That in-place refresh must not navigate, activate a
 window, or replace an unrelated open detail page. Recorder-idle queued
 completion may still present the finished meeting, matching the existing
 queued-completion behavior.
+
+### Meeting Classification Inspector
+
+Meeting type and label editing uses the native trailing inspector from the
+Meetings workspace, Library, and saved-meeting detail. It must stay integrated
+with the current window and keep the underlying meeting context visible; it is
+not presented as a blocking sheet. The inspector is resizable between 320 and
+440 points and closes through its compact close control or the native inspector
+gesture.
+
+New types and labels use keyboard-first text fields. Pressing Return creates
+and immediately assigns the entered value; there is no separate **Add** button.
+Existing types remain selectable from the picker and labels remain toggleable
+as chips.
 
 ### Saved Meeting Notes
 

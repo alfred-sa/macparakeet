@@ -419,7 +419,7 @@ struct TranscriptResultView: View {
 
     @State private var backHovered = false
     @State private var headerExpanded = false
-    @State private var showingMeetingClassification = false
+    @State private var classificationTarget: Transcription?
     @State private var speakerOverviewExpanded = true
     @State private var copied = false
     @State private var copiedResultID: UUID?
@@ -605,14 +605,10 @@ struct TranscriptResultView: View {
             ) {
                 PromptLibraryView(viewModel: promptsViewModel)
             }
-            .sheet(isPresented: $showingMeetingClassification) {
-                if let meetingClassificationViewModel {
-                    MeetingClassificationEditor(
-                        transcription: activeTranscription,
-                        viewModel: meetingClassificationViewModel
-                    )
-                }
-            }
+            .meetingClassificationInspector(
+                item: $classificationTarget,
+                viewModel: meetingClassificationViewModel
+            )
             .alert("New speaker", isPresented: $showingNewSpeakerPrompt) {
                 TextField("Speaker name", text: $newSpeakerLabel)
                 Button("Cancel", role: .cancel) {
@@ -705,6 +701,7 @@ struct TranscriptResultView: View {
             }
         }
         headerExpanded = false
+        classificationTarget = nil
         speakerOverviewExpanded = true
         editingTitle = false
         titleDraft = ""
@@ -1637,7 +1634,7 @@ struct TranscriptResultView: View {
                     )
 
                     Button {
-                        showingMeetingClassification = true
+                        classificationTarget = activeTranscription
                     } label: {
                         Image(systemName: "tag")
                             .font(.system(size: 12, weight: .semibold))

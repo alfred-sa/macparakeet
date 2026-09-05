@@ -263,12 +263,10 @@ struct TranscriptionLibraryView: View {
             .onDisappear {
                 cancelBulkExport()
             }
-            .sheet(item: $classificationTarget) { transcription in
-                MeetingClassificationEditor(
-                    transcription: transcription,
-                    viewModel: viewModel.meetingClassificationViewModel
-                )
-            }
+            .meetingClassificationInspector(
+                item: $classificationTarget,
+                viewModel: viewModel.meetingClassificationViewModel
+            )
     }
 
     private var thumbnailGrid: some View {

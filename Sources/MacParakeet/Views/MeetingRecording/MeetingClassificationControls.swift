@@ -211,7 +211,7 @@ struct MeetingClassificationFilterBar: View {
 struct MeetingClassificationEditor: View {
     let transcription: Transcription
     @Bindable var viewModel: MeetingClassificationViewModel
-    @Environment(\.dismiss) private var dismiss
+    let onClose: () -> Void
     @State private var newTypeName = ""
     @State private var newLabelName = ""
 
@@ -221,10 +221,10 @@ struct MeetingClassificationEditor: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+        VStack(alignment: .leading, spacing: 0) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Classify Meeting")
+                    Text("Classification")
                         .font(DesignSystem.Typography.sectionTitle)
                     Text(transcription.effectiveDisplayTitle)
                         .font(DesignSystem.Typography.bodySmall)
@@ -232,98 +232,104 @@ struct MeetingClassificationEditor: View {
                         .lineLimit(1)
                 }
                 Spacer()
-                Button("Done") { dismiss() }
-                    .parakeetAction(.secondary)
-            }
-
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Meeting type")
-                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
-
-                Picker("Meeting type", selection: meetingTypeBinding) {
-                    Text("Unclassified").tag(UUID?.none)
-                    if let assignedType = classification.meetingType,
-                        !viewModel.meetingTypes.contains(where: { $0.id == assignedType.id })
-                    {
-                        Text("\(assignedType.name) (Archived)").tag(Optional(assignedType.id))
-                    }
-                    ForEach(viewModel.meetingTypes) { meetingType in
-                        Text(meetingType.name).tag(Optional(meetingType.id))
-                    }
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 26)
                 }
-                .labelsHidden()
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .foregroundStyle(DesignSystem.Colors.textSecondary)
+                .background(Circle().fill(DesignSystem.Colors.surfaceElevated))
+                .help("Close classification")
+                .accessibilityLabel("Close classification")
+            }
+            .padding(DesignSystem.Spacing.lg)
 
-                if !viewModel.meetingTypes.isEmpty {
-                    Menu("Manage types") {
-                        ForEach(viewModel.meetingTypes) { meetingType in
-                            Button(role: .destructive) {
-                                viewModel.archiveMeetingType(meetingType.id)
-                            } label: {
-                                Label("Archive \(meetingType.name)", systemImage: "archivebox")
+            Divider()
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: DesignSystem.Spacing.lg) {
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Meeting type")
+                            .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+
+                        Picker("Meeting type", selection: meetingTypeBinding) {
+                            Text("Unclassified").tag(UUID?.none)
+                            if let assignedType = classification.meetingType,
+                                !viewModel.meetingTypes.contains(where: { $0.id == assignedType.id })
+                            {
+                                Text("\(assignedType.name) (Archived)").tag(Optional(assignedType.id))
+                            }
+                            ForEach(viewModel.meetingTypes) { meetingType in
+                                Text(meetingType.name).tag(Optional(meetingType.id))
                             }
                         }
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                        if !viewModel.meetingTypes.isEmpty {
+                            Menu("Manage types") {
+                                ForEach(viewModel.meetingTypes) { meetingType in
+                                    Button(role: .destructive) {
+                                        viewModel.archiveMeetingType(meetingType.id)
+                                    } label: {
+                                        Label("Archive \(meetingType.name)", systemImage: "archivebox")
+                                    }
+                                }
+                            }
+                            .menuStyle(.borderlessButton)
+                            .fixedSize()
+                            .help("Archive types without changing historical meetings")
+                        }
+
+                        TextField("New type — press Return", text: $newTypeName)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(createType)
+                            .help("Press Return to create and assign this meeting type")
                     }
-                    .menuStyle(.borderlessButton)
-                    .fixedSize()
-                    .help("Archive types without changing historical meetings")
-                }
 
-                HStack {
-                    TextField("New meeting type", text: $newTypeName)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(createType)
-                    Button("Add", action: createType)
-                        .parakeetAction(.secondary)
-                        .disabled(newTypeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+                    VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
+                        Text("Labels")
+                            .font(DesignSystem.Typography.bodySmall.weight(.semibold))
 
-            VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
-                Text("Labels")
-                    .font(DesignSystem.Typography.bodySmall.weight(.semibold))
+                        if displayedLabels.isEmpty {
+                            Text("Add a label to organize this meeting.")
+                                .font(DesignSystem.Typography.bodySmall)
+                                .foregroundStyle(DesignSystem.Colors.textTertiary)
+                        } else {
+                            FlowLayout(spacing: 7) {
+                                ForEach(Array(displayedLabels.enumerated()), id: \.element.id) { index, label in
+                                    labelToken(label, index: index)
+                                }
+                            }
+                        }
 
-                if displayedLabels.isEmpty {
-                    Text("Add a label to organize this meeting.")
-                        .font(DesignSystem.Typography.bodySmall)
-                        .foregroundStyle(DesignSystem.Colors.textTertiary)
-                } else {
-                    FlowLayout(spacing: 7) {
-                        ForEach(Array(displayedLabels.enumerated()), id: \.element.id) { index, label in
-                            labelToken(label, index: index)
+                        TextField("New label — press Return", text: $newLabelName)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(createLabel)
+                            .help("Press Return to create and assign this label")
+                    }
+
+                    if viewModel.updatingTranscriptionIDs.contains(transcription.id) {
+                        HStack(spacing: 7) {
+                            ParakeetSpinner(.inline)
+                            Text("Saving classification…")
+                                .font(DesignSystem.Typography.caption)
+                                .foregroundStyle(DesignSystem.Colors.textTertiary)
                         }
                     }
+
+                    if let errorMessage = viewModel.errorMessage {
+                        Text(errorMessage)
+                            .font(DesignSystem.Typography.caption)
+                            .foregroundStyle(DesignSystem.Colors.errorRed)
+                    }
+
+                    Spacer(minLength: 0)
                 }
-
-                HStack {
-                    TextField("New label", text: $newLabelName)
-                        .textFieldStyle(.roundedBorder)
-                        .onSubmit(createLabel)
-                    Button("Add", action: createLabel)
-                        .parakeetAction(.secondary)
-                        .disabled(newLabelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
+                .padding(DesignSystem.Spacing.lg)
             }
-
-            if viewModel.updatingTranscriptionIDs.contains(transcription.id) {
-                HStack(spacing: 7) {
-                    ParakeetSpinner(.inline)
-                    Text("Saving classification…")
-                        .font(DesignSystem.Typography.caption)
-                        .foregroundStyle(DesignSystem.Colors.textTertiary)
-                }
-            }
-
-            if let errorMessage = viewModel.errorMessage {
-                Text(errorMessage)
-                    .font(DesignSystem.Typography.caption)
-                    .foregroundStyle(DesignSystem.Colors.errorRed)
-            }
-
-            Spacer(minLength: 0)
         }
-        .padding(DesignSystem.Spacing.lg)
-        .frame(width: 440, height: 430)
         .background(DesignSystem.Colors.contentBackground)
         .onAppear {
             viewModel.loadOptions()
@@ -387,6 +393,44 @@ struct MeetingClassificationEditor: View {
         let name = newLabelName
         newLabelName = ""
         viewModel.createMeetingLabel(named: name, assigningTo: transcription.id)
+    }
+}
+
+private struct MeetingClassificationInspectorModifier: ViewModifier {
+    @Binding var item: Transcription?
+    let viewModel: MeetingClassificationViewModel?
+
+    func body(content: Content) -> some View {
+        content.inspector(isPresented: isPresented) {
+            if let transcription = item, let viewModel {
+                MeetingClassificationEditor(
+                    transcription: transcription,
+                    viewModel: viewModel,
+                    onClose: { item = nil }
+                )
+                .inspectorColumnWidth(min: 320, ideal: 360, max: 440)
+            }
+        }
+    }
+
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { item != nil },
+            set: { presented in
+                if !presented {
+                    item = nil
+                }
+            }
+        )
+    }
+}
+
+extension View {
+    func meetingClassificationInspector(
+        item: Binding<Transcription?>,
+        viewModel: MeetingClassificationViewModel?
+    ) -> some View {
+        modifier(MeetingClassificationInspectorModifier(item: item, viewModel: viewModel))
     }
 }
 

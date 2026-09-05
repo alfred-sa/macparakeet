@@ -196,12 +196,10 @@ struct MeetingsView: View {
             ) {
                 PromptLibraryView(viewModel: viewModel.promptsViewModel)
             }
-            .sheet(item: $classificationTarget) { transcription in
-                MeetingClassificationEditor(
-                    transcription: transcription,
-                    viewModel: viewModel.recentMeetingsViewModel.meetingClassificationViewModel
-                )
-            }
+            .meetingClassificationInspector(
+                item: $classificationTarget,
+                viewModel: viewModel.recentMeetingsViewModel.meetingClassificationViewModel
+            )
             .sheet(isPresented: $showingMeetingPromptPolicies) {
                 MeetingPromptPolicyEditor(viewModel: viewModel)
             }
