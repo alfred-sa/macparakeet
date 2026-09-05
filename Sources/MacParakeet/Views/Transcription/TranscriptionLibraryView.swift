@@ -3,6 +3,11 @@ import SwiftUI
 import MacParakeetCore
 import MacParakeetViewModels
 
+private enum LibraryLayoutMode: String {
+    case grid
+    case list
+}
+
 struct TranscriptionLibraryView: View {
     @Bindable var viewModel: TranscriptionLibraryViewModel
     var title: String = "Library"
@@ -28,6 +33,8 @@ struct TranscriptionLibraryView: View {
     private var bulkExportIncludeSpeakerLabels = true
     @AppStorage("com.macparakeet.libraryBulkExportIncludeMetadata")
     private var bulkExportIncludeMetadata = true
+    @AppStorage("com.macparakeet.libraryLayoutMode")
+    private var libraryLayoutMode = LibraryLayoutMode.grid
     @State private var bulkExportInProgress = false
     @State private var bulkExportResult: BulkTranscriptExportResult?
     @State private var bulkExportErrorMessage: String?
@@ -54,6 +61,20 @@ struct TranscriptionLibraryView: View {
                     .foregroundStyle(DesignSystem.Colors.textPrimary)
 
                 Spacer()
+
+                if !isMeetingContext {
+                    Picker("Library layout", selection: $libraryLayoutMode) {
+                        Image(systemName: "square.grid.2x2")
+                            .accessibilityLabel("Grid")
+                            .tag(LibraryLayoutMode.grid)
+                        Image(systemName: "list.bullet")
+                            .accessibilityLabel("List")
+                            .tag(LibraryLayoutMode.list)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 76)
+                    .help(libraryLayoutMode == .grid ? "Switch to list view" : "Switch to grid view")
+                }
 
                 if showsSelectManyButton {
                     LibrarySelectManyButton {
@@ -105,8 +126,8 @@ struct TranscriptionLibraryView: View {
                 loadingState
             } else if viewModel.filteredTranscriptions.isEmpty {
                 emptyState
-            } else if isMeetingListMode {
-                meetingsList
+            } else if usesListLayout {
+                transcriptionList
             } else {
                 thumbnailGrid
             }
@@ -313,7 +334,7 @@ struct TranscriptionLibraryView: View {
         }
     }
 
-    private var meetingsList: some View {
+    private var transcriptionList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 ForEach(viewModel.groupedTranscriptions, id: \.group) { section in
@@ -327,6 +348,7 @@ struct TranscriptionLibraryView: View {
                             searchText: viewModel.searchText,
                             isSelected: viewModel.isTranscriptionSelected(transcription),
                             showsSelectionControls: viewModel.isBulkSelectionModeEnabled,
+                            showsSource: !isMeetingContext,
                             isRetrying: viewModel.isRetryingMeetingTranscription(transcription),
                             onTap: {
                                 if viewModel.isBulkOperationInProgress || bulkExportInProgress {
@@ -499,7 +521,7 @@ struct TranscriptionLibraryView: View {
         BulkTranscriptionSelectionBar(
             selectedCount: selectedBulkExportTargets.count,
             selectedMeetingAudioCount: viewModel.selectedMeetingAudioCount,
-            isMeetingContext: isMeetingListMode,
+            isMeetingContext: isMeetingContext,
             areAllVisibleSelected: viewModel.areAllLoadedVisibleTranscriptionsSelected,
             isPerformingOperation: viewModel.isBulkOperationInProgress || bulkExportInProgress,
             operationLabel: bulkExportInProgress ? "Exporting..." : "Deleting...",
@@ -934,8 +956,12 @@ struct TranscriptionLibraryView: View {
         }
     }
 
-    private var isMeetingListMode: Bool {
+    private var isMeetingContext: Bool {
         viewModel.scope == .meetings || viewModel.filter == .meeting
+    }
+
+    private var usesListLayout: Bool {
+        isMeetingContext || libraryLayoutMode == .list
     }
 
     private var bulkOperationTitle: String {
@@ -1026,15 +1052,15 @@ struct TranscriptionLibraryView: View {
 
     private var emptyStateIcon: String {
         if !viewModel.searchText.isEmpty { return "magnifyingglass" }
-        return isMeetingListMode ? "waveform.badge.mic" : "square.grid.2x2"
+        return isMeetingContext ? "waveform.badge.mic" : "square.grid.2x2"
     }
 
     private var emptyStateTitle: String {
-        isMeetingListMode ? "No meetings recorded yet" : emptyTitle
+        isMeetingContext ? "No meetings recorded yet" : emptyTitle
     }
 
     private var emptyStateMessage: String {
-        isMeetingListMode
+        isMeetingContext
             ? "Press Record Meeting on the Transcribe tab to capture system audio and transcribe locally."
             : emptyMessage
     }

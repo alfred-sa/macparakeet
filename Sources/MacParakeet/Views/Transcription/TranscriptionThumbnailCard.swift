@@ -268,7 +268,9 @@ struct TranscriptionThumbnailCard<MenuContent: View>: View {
         }
         .padding(DesignSystem.Spacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(height: classification?.labels.isEmpty == false ? 100 : 80, alignment: .top)
+        // Always reserve the label row. Conditional heights made adjacent
+        // cards jump by 20 points as soon as one transcription gained a label.
+        .frame(height: 100, alignment: .top)
     }
 
     // MARK: - Search Highlighting

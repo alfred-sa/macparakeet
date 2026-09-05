@@ -38,6 +38,7 @@ struct MeetingClassificationBadges: View {
             }
             Text(text)
                 .lineLimit(1)
+                .truncationMode(.tail)
         }
         .font(DesignSystem.Typography.micro.weight(isPrimary ? .semibold : .medium))
         .foregroundStyle(tint)
@@ -45,7 +46,7 @@ struct MeetingClassificationBadges: View {
         .padding(.vertical, 2)
         .background(Capsule().fill(tint.opacity(0.11)))
         .overlay(Capsule().strokeBorder(tint.opacity(0.22), lineWidth: 0.5))
-        .fixedSize()
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
