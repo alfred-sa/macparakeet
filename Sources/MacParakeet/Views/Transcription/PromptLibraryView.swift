@@ -16,6 +16,7 @@ struct PromptLibraryView: View {
 
     @Environment(\.dismiss) private var dismiss
     @Bindable var viewModel: PromptsViewModel
+    var showsDismissButton = true
     @State private var editName: String = ""
     @State private var editContent: String = ""
     @State private var newContentMode: ContentMode = .edit
@@ -68,17 +69,19 @@ struct PromptLibraryView: View {
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
                     .accessibilityLabel("Search prompts")
-                Button {
-                    dismiss()
-                } label: {
-                    Text("Done")
-                        .font(DesignSystem.Typography.body.weight(.semibold))
-                        .padding(.horizontal, DesignSystem.Spacing.sm)
+                if showsDismissButton {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Done")
+                            .font(DesignSystem.Typography.body.weight(.semibold))
+                            .padding(.horizontal, DesignSystem.Spacing.sm)
+                    }
+                    .parakeetAction(.primaryProminent)
+                    .controlSize(.large)
+                    // Esc dismisses (Apple HIG default for sheets).
+                    .keyboardShortcut(.cancelAction)
                 }
-                .parakeetAction(.primaryProminent)
-                .controlSize(.large)
-                // Esc dismisses (Apple HIG default for sheets).
-                .keyboardShortcut(.cancelAction)
             }
             .padding(DesignSystem.Spacing.xl)
             .background(DesignSystem.Colors.surface)

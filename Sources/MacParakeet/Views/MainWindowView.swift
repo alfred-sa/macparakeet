@@ -8,6 +8,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     case library = "Library"
     case dictations = "Dictations"
     case meetings = "Meetings"
+    case prompts = "Prompts"
     case transforms = "Transforms"
     case vocabulary = "Vocabulary"
     case feedback = "Feedback"
@@ -24,6 +25,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         case .meetings: return "person.2.wave.2"
         case .library: return "square.grid.2x2"
         case .dictations: return "clock.arrow.circlepath"
+        case .prompts: return "text.quote"
         case .transforms: return "wand.and.stars"
         case .vocabulary: return "book.fill"
         case .feedback: return "bubble.left.and.text.bubble.right"
@@ -36,17 +38,19 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 
     /// Primary features — the core things users do. Library remains the
     /// universal archive; Meetings is the workflow space for live/upcoming
-    /// and saved meeting work.
+    /// and saved meeting work; Prompts automates transcript and meeting
+    /// processing.
     static var primaryItems: [SidebarItem] {
         var items: [SidebarItem] = [.transcribe, .library, .dictations]
         if AppFeatures.meetingRecordingEnabled {
             items.append(.meetings)
         }
+        items.append(.prompts)
         return items
     }
 
-    /// Configuration and support items. Transforms (ADR-022) is inserted
-    /// here at runtime when `AppFeatures.transformsEnabled == true`.
+    /// Configuration and support items. Transforms (ADR-022) is inserted when
+    /// its feature is enabled.
     static var configItems: [SidebarItem] {
         var items: [SidebarItem] = [.vocabulary, .feedback, .settings]
         if AppFeatures.transformsEnabled {
@@ -198,6 +202,11 @@ struct MainWindowView: View {
                         }
                     case .dictations:
                         DictationHistoryView(viewModel: historyViewModel)
+                    case .prompts:
+                        PromptLibraryView(
+                            viewModel: promptsViewModel,
+                            showsDismissButton: false
+                        )
                     case .transforms:
                         TransformsView(
                             viewModel: transformsViewModel,
