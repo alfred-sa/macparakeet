@@ -125,6 +125,19 @@ if [[ -d "$RESOURCE_BUNDLE" ]]; then
   rsync -a --delete "$RESOURCE_BUNDLE" "$RESOURCES_DIR/"
 fi
 
+# Dependency resource bundles must keep their bundle directory name because
+# Bundle.module resolves them under Contents/Resources at runtime. The
+# distribution builder already copies every SwiftPM bundle; mirror that here
+# for dependencies such as SwiftStreamingMarkdown and its syntax highlighter.
+RESOURCES_DIR="$APP_BUNDLE/Contents/Resources"
+mkdir -p "$RESOURCES_DIR"
+while IFS= read -r -d '' bundle; do
+  if [[ "$bundle" != "$RESOURCE_BUNDLE" ]]; then
+    bundle_name="${bundle##*/}"
+    rsync -a --delete "$bundle/" "$RESOURCES_DIR/$bundle_name/"
+  fi
+done < <(find "$PRODUCT_DIR" -maxdepth 1 -type d -name '*.bundle' -print0)
+
 # Copy frameworks into the bundle so dyld loads only bundle-local paths.
 BUNDLE_FW_DIR="$APP_BUNDLE/Contents/Frameworks"
 rm -rf "$BUNDLE_FW_DIR"

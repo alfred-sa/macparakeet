@@ -1,8 +1,9 @@
 # Post-Meeting Notes and Opt-In Prompt Context
 
-> **Status:** PARTIAL — saved-meeting notes and opt-in prompt context are
-> implemented and locally verified on 2026-09-05. The rich Markdown renderer
-> follow-up below remains PROPOSED and requires explicit approval.
+> **Status:** IMPLEMENTED — saved-meeting notes, opt-in prompt context, and the
+> shared rich Markdown renderer are implemented and locally verified on
+> 2026-09-05. Visual/accessibility QA and a release-bundle size comparison
+> remain before PR/release.
 > **Priority:** P2
 > **Date:** 2026-09-05
 > **Issues:** [#889](https://github.com/moona3k/macparakeet/issues/889),
@@ -341,9 +342,9 @@ assembly remains unchanged.
 
 ## Follow-up Workstream — Rich Markdown Prompt Results
 
-> **Status:** PROPOSED on 2026-09-05 — added during implementation of the notes
-> slice. Design is ready for owner validation, but implementation is not part
-> of Phases 1–5 above until explicitly approved.
+> **Status:** IMPLEMENTED / LOCALLY VERIFIED on 2026-09-05 — added during
+> implementation of the notes slice and explicitly approved in the same plan.
+> Its implementation remains separate from Phases 1–5 above.
 
 ### Goal and current gap
 
@@ -375,8 +376,8 @@ Support the CommonMark/GFM subset routinely emitted by LLMs:
 - display-only task lists for `- [ ]` and `- [x]`;
 - block quotes and thematic separators;
 - fenced code blocks with horizontal overflow;
-- tables with a header, left/center/right column alignment, borders, inline
-  formatting in cells, and horizontal scrolling when too wide.
+- tables with a header, borders, inline formatting in cells, and horizontal
+  scrolling when too wide.
 
 Remain explicitly out of scope:
 
@@ -395,16 +396,25 @@ behind that boundary with
 
 The dependency was re-verified on 2026-09-05: release `0.7.0` uses Swift tools
 5.9, supports macOS 14, and documents tables, display-only task lists, nested
-content, links, and static/streaming renderers. Pin exactly `0.7.0`; do not use
-an open-ended version range. Before adoption, inspect and record its transitive
-dependency/license footprint (`swift-markdown`, syntax highlighting, math, and
-UI helpers) and confirm the approximately 1 MB release-size claim against a
-MacParakeet app build.
+content, links, and static/streaming renderers. SwiftPM rejects the stable
+`exact: "0.7.0"` declaration because that release itself depends on two
+revision-based packages. Pin the release tag's immutable signed commit
+`5f7c04e0558df6146f90d482edb62cb456986bda` instead; do not use an open-ended
+branch or version range. Its production dependency/license footprint is
+`swift-markdown`, HighlightSwift, iosMath, Equatable, and SwiftUI-Shimmer, all
+with license files present in their resolved checkouts. Validate distribution
+size from a release app bundle before shipping rather than relying on the
+upstream approximate claim.
 
 If the dependency fails the selection, accessibility, size, or streaming gate,
 fall back to `swift-markdown` plus a local renderer. Do not extend the current
 line parser with one-off table and checkbox branches; that would create a
 second incomplete Markdown engine.
+
+Known `v0.7.0` presentation limits are recorded rather than hidden: table
+cells render left-aligned even when GFM alignment markers are present, and
+ordered-list display starts at 1. The dependency's pointer-revealed table
+Copy/Download icons also require a manual VoiceOver audit before release.
 
 ### Integration and trust boundaries
 
@@ -416,16 +426,17 @@ second incomplete Markdown engine.
 - Apply the shared renderer consistently to completed/partial Prompt Results,
   saved Chat, and live Ask. Do not create a Summary-only renderer.
 - Disable remote images and embedded content at configuration level.
-- Permit only `http` and `https` links after URL validation. Render `file:`,
-  `javascript:`, custom schemes, and malformed destinations as inert text.
+- Permit only `http` and `https` links after URL validation. Discard
+  activation of `file:`, `javascript:`, custom schemes, relative paths, and
+  malformed destinations.
 - Keep all colors/fonts dynamic and mapped through `DesignSystem` for light and
   dark appearances.
 - Tables wider than their container scroll horizontally without expanding the
   transcript or live-meeting panel.
 - Task-list boxes are visual, non-interactive, and expose checked/unchecked
   state to VoiceOver.
-- Ordinary text and table-cell text remain selectable. Keyboard focus and link
-  activation must remain usable without a pointer.
+- Ordinary text and table-cell text remain selectable. Keyboard focus and
+  allowed-link activation must remain usable without a pointer.
 
 ### Copy, export, and persistence invariants
 
@@ -440,7 +451,7 @@ second incomplete Markdown engine.
 
 ### Markdown implementation phases
 
-1. **Dependency gate:** pin `0.7.0` on a spike branch; verify SwiftPM/Xcode
+1. **Dependency gate:** pin the immutable `v0.7.0` commit; verify SwiftPM/Xcode
    compatibility, licenses, release-size delta, macOS 14 behavior, and absence
    of unwanted network/image behavior.
 2. **Local façade:** replace the internals of `MarkdownContentView` while
@@ -454,14 +465,22 @@ second incomplete Markdown engine.
    `spec/04-ui-patterns.md`; remove obsolete Markdown future-work wording from
    ADR-018 only after the renderer ships.
 
+Implementation uses `MarkdownView` for completed/partial content and
+`StreamedMarkdownView` for live accumulated snapshots. A
+`bufferingNewest(1)` source serializes parsing and drops superseded queued
+snapshots instead of launching one parse task per token. The GUI façade applies
+DesignSystem styling, enables text selection, disables every image source, and
+rejects non-HTTP(S) link activation. The dev app wrapper now copies dependency
+resource bundles just as the distribution builder does.
+
 ### Markdown test and manual-validation plan
 
 Add focused renderer tests around one kitchen-sink fixture and smaller failure
 fixtures:
 
-- table alignment, inline cell formatting, narrow/wide layout, and overflow;
+- inline table-cell formatting, narrow/wide layout, and overflow;
 - checked/unchecked task items and VoiceOver labels;
-- nested lists and ordered lists starting at a non-one value;
+- nested ordered and unordered lists;
 - headings, quotes, separators, emphasis, strikethrough, links, and code;
 - Unicode, malformed Markdown, and empty/plaintext inputs;
 - partial streaming emphasis, an open code fence, and an incomplete table;
