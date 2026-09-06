@@ -54,6 +54,19 @@ final class TranscriptionRepositoryTests: XCTestCase {
         }
     }
 
+    func testCompletionMergeDoesNotMoveUpdatedAtBehindConcurrentEdit() throws {
+        let completedAt = Date(timeIntervalSince1970: 100)
+        let editedAt = Date(timeIntervalSince1970: 200)
+        let stale = Transcription(fileName: "Meeting", sourceType: .meeting, updatedAt: completedAt)
+        var edited = stale
+        edited.updatedAt = editedAt
+        edited.userNotes = "Latest notes"
+        try repo.save(edited)
+        let saved = try repo.savePreservingUserMetadata(stale, originalFileName: stale.fileName)
+        XCTAssertEqual(saved.updatedAt, editedAt)
+        XCTAssertEqual(try repo.fetch(id: stale.id)?.updatedAt, editedAt)
+    }
+
     func testCompletionAllowsGeneratedMeetingTitleWhenOriginalNameIsUnchanged() throws {
         let original = Transcription(fileName: "Meeting recording", sourceType: .meeting)
         try repo.save(original)

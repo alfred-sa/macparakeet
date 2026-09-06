@@ -74,7 +74,7 @@ success from a stale snapshot or make a second fetch part of write success.
 Transcription completion uses `savePreservingUserMetadata` and publishes the
 returned row. The repository merges current notes, meeting type, favorite,
 title override, legacy chat, artifact-folder pointer, and concurrent meeting
-renames inside the same write transaction. Explicit clears remain clears.
+renames inside the same write transaction. Explicit clears remain clears and `updatedAt` never moves behind the current row.
 Pass the processing snapshot's original file name so an automatic title may
 replace an unchanged name, while a rename during STT wins. The service and GUI
 must both use this boundary; a later full-row save would undo the merge.

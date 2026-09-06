@@ -794,6 +794,7 @@ private extension Transcription {
     func preservingUserMetadata(from current: Transcription?, originalFileName: String) -> Transcription {
         guard let current else { return self }
         var merged = self
+        merged.updatedAt = max(updatedAt, current.updatedAt)
         merged.userNotes = current.userNotes
         merged.meetingTypeId = current.meetingTypeId
         merged.isFavorite = current.isFavorite
