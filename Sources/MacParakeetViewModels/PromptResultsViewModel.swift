@@ -422,7 +422,7 @@ public final class PromptResultsViewModel {
         }.sorted(by: Self.resolvedPromptOrdering)
     }
 
-    private static func resolvedPromptOrdering(
+    nonisolated private static func resolvedPromptOrdering(
         _ lhs: ResolvedPrompt,
         _ rhs: ResolvedPrompt
     ) -> Bool {
