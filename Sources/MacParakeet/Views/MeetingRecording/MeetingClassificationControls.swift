@@ -150,6 +150,7 @@ private struct MeetingLabelFilterPopover: View {
     }
 }
 
+@MainActor
 private func filterPopoverContainer<Content: View>(
     searchText: Binding<String>,
     prompt: String,
@@ -180,6 +181,7 @@ private func filterPopoverContainer<Content: View>(
     .background(DesignSystem.Colors.contentBackground)
 }
 
+@MainActor
 private func filterChip(
     name: String,
     icon: String?,
