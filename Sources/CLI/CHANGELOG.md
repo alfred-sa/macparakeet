@@ -120,6 +120,18 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
   ignore both fields, and unset/legacy values omit them. Meeting result
   JSON and materialized `prompt-results.json` also preserve that receipt as
   additive optional `inferenceSettingsSnapshot`.
+- Versioned Prompt Library commands: `prompts history`, version-aware `prompts
+  show`, `prompts diff`, restore-as-new-version, soft delete/restore, optional
+  model selection, and label availability policies. Built-in prompts use
+  the same CLI mutation rights as user-created prompts. Existing prompt JSON is
+  extended additively with version and provenance metadata.
+- Meeting classification commands: `meetings types`, `meetings labels`, and
+  `meetings classify`, plus SQL-backed `meetings list --type`, `--label`, and
+  `--unclassified` filters. Meeting list/show/export JSON and materialized
+  meeting artifacts gain additive optional type and label snapshots.
+- Stored prompt-result JSON gains optional `promptId`, `promptVersionId`,
+  `providerSnapshot`, and `modelSnapshot` execution receipts. Historical and
+  externally imported results may omit them.
 
 ### Fixed
 
@@ -145,18 +157,6 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ### Added
 
-- Versioned Prompt Library commands: `prompts history`, version-aware `prompts
-  show`, `prompts diff`, restore-as-new-version, soft delete/restore, optional
-  model selection, and meeting-type availability policies. Built-in prompts use
-  the same CLI mutation rights as user-created prompts. Existing prompt JSON is
-  extended additively with version and provenance metadata.
-- Meeting classification commands: `meetings types`, `meetings labels`, and
-  `meetings classify`, plus SQL-backed `meetings list --type`, `--label`, and
-  `--unclassified` filters. Meeting list/show/export JSON and materialized
-  meeting artifacts gain additive optional type and label snapshots.
-- Stored prompt-result JSON gains optional `promptId`, `promptVersionId`,
-  `providerSnapshot`, and `modelSnapshot` execution receipts. Historical and
-  externally imported results may omit them.
 - `meetings artifact --json` and envelope output may now include the additive
   optional `meetingCaptureReport` field with frame-derived meeting capture
   quality, elapsed/playable durations, and per-source coverage. Legacy meetings
