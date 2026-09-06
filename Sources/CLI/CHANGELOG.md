@@ -50,35 +50,6 @@ truth for branching.
 The canonical automation contract for stdout/stderr, envelopes, exit codes,
 and `spec --json` lives in `spec/contracts/cli-json-v1.md`.
 
-## Unreleased
-
-- Prompt availability can be updated with `prompts set --label LABEL` or
-  `--all-labels`, plus `--available`/`--unavailable`. Writes now affect the same
-  label rules used by execution and preserve existing exceptions. JSON returns
-  the saved label policy. Source auto-run remains a separate setting.
-- The obsolete fork-only `--meeting-type`/`--all-meeting-types` policy flags
-  fail with migration guidance instead of successfully writing inactive rules.
-
-### Added
-
-- Speaker-aware export and meeting JSON now include additive
-  `speakerCorrectionsApplied` and `speakerCorrectionRevision` metadata.
-
-### Fixed
-
-- `prompts run` now applies the same label availability rules as the app for
-  every transcription source. A matching target label is sufficient; legacy
-  meeting-type policies no longer override label availability.
-- Prompt restoration timestamps now record the restoration time on the new
-  version and the active prompt.
-- Provider model aliases are validated by the provider during generation,
-  instead of being rejected when absent from model discovery results. Local
-  CLI rejects a prompt model override that differs from the configured model
-  because its command template cannot apply that override.
-- `export`, `meetings show`, `meetings transcript`, `meetings export`, and
-  meeting-artifact refreshes now render the active speaker corrections instead
-  of silently falling back to automatic diarization.
-
 ### `--json` failure envelope
 
 Any command that accepts `--json` emits this envelope on stdout when the
@@ -118,8 +89,19 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ## [Unreleased]
 
+### Changed
+
+- Prompt availability can be updated with `prompts set --label LABEL` or
+  `--all-labels`, plus `--available`/`--unavailable`. Writes now affect the same
+  label rules used by execution and preserve existing exceptions. JSON returns
+  the saved label policy. Source auto-run remains a separate setting.
+- The obsolete fork-only `--meeting-type`/`--all-meeting-types` policy flags
+  fail with migration guidance instead of successfully writing inactive rules.
+
 ### Added
 
+- Speaker-aware export and meeting JSON now include additive
+  `speakerCorrectionsApplied` and `speakerCorrectionRevision` metadata.
 - `prompts set <prompt>` gains mutually exclusive `--include-meeting-notes`
   and `--no-include-meeting-notes` flags for result prompts. Prompt JSON gains
   additive Boolean `includeMeetingNotes`, and saved PromptResult JSON gains
@@ -141,6 +123,18 @@ by checking exit code first: `2` = misuse, `1` = runtime, `0` = success.
 
 ### Fixed
 
+- `prompts run` now applies the same label availability rules as the app for
+  every transcription source. A matching target label is sufficient; legacy
+  meeting-type policies no longer override label availability.
+- Prompt restoration timestamps now record the restoration time on the new
+  version and the active prompt.
+- Provider model aliases are validated by the provider during generation,
+  instead of being rejected when absent from model discovery results. Local
+  CLI rejects a prompt model override that differs from the configured model
+  because its command template cannot apply that override.
+- `export`, `meetings show`, `meetings transcript`, `meetings export`, and
+  meeting-artifact refreshes now render the active speaker corrections instead
+  of silently falling back to automatic diarization.
 - Local CLI output normalizes line endings: CRLF collapses to a single LF and
   a bare CR is rewritten to LF instead of passing through unsanitized. This
   closes a terminal-overwrite gap in the existing sanitizer (a wrapped CLI
