@@ -2930,9 +2930,10 @@ final class TranscriptionViewModelTests: XCTestCase {
             sourceType: .meeting, userNotes: "Old notes"
         )
         mockRepo.transcriptions = [original]
-        await mockService.configure(result: Transcription(
-            fileName: "Stale result", rawTranscript: "New transcript", status: .completed
-        ))
+        await mockService.configure(
+            result: Transcription(
+                fileName: "Stale result", rawTranscript: "New transcript", status: .completed
+            ))
         let started = expectation(description: "Service suspended")
         let (release, continuation) = AsyncStream<Void>.makeStream()
         defer { continuation.finish() }
