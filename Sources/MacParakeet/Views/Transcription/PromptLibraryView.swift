@@ -24,6 +24,7 @@ struct PromptLibraryView: View {
     @State private var searchText = ""
     @State private var diffFromVersionID: UUID?
     @State private var diffToVersionID: UUID?
+    @State private var versionDiff = PromptVersionDiffViewModel()
     @State private var collectionFilterID: UUID?
     @State private var promptKindFilter: PromptKindFilter = .all
     @State private var collectionDraftNames: [UUID: String] = [:]
@@ -1109,19 +1110,29 @@ struct PromptLibraryView: View {
                     if let from = selectedVersion(diffFromVersionID),
                         let to = selectedVersion(diffToVersionID)
                     {
-                        let diff = PromptDiffService.diff(from: from, to: to)
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(Array(diff.markdown.lines.enumerated()), id: \.offset) { _, line in
-                                diffLine(line)
+                        let selection = PromptVersionDiffViewModel.Selection(from: from, to: to)
+                        Group {
+                            if versionDiff.selection == selection, let diff = versionDiff.diff {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(Array(diff.markdown.lines.enumerated()), id: \.offset) { _, line in
+                                        diffLine(line)
+                                    }
+                                }
+                                .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
+                                        .strokeBorder(DesignSystem.Colors.border, lineWidth: 1)
+                                )
+
+                                versionSettingsComparison(diff: diff)
+                            } else {
+                                ProgressView("Comparing versions…")
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DesignSystem.Layout.rowCornerRadius)
-                                .strokeBorder(DesignSystem.Colors.border, lineWidth: 1)
-                        )
-
-                        versionSettingsComparison(diff: diff)
+                        .task(id: selection) {
+                            await versionDiff.load(from: from, to: to)
+                        }
                     }
                 }
                 .padding(.top, DesignSystem.Spacing.md)

@@ -980,18 +980,30 @@ final class PromptRepositoryTests: XCTestCase {
     func testRestoringOldVersionCreatesANewVersion() throws {
         let versionRepo = PromptVersionRepository(dbQueue: manager.dbQueue)
         let service = PromptEditingService(dbQueue: manager.dbQueue)
-        var prompt = try service.create(Prompt(name: "Restore", content: "Original"))
+        let originalDate = Date(timeIntervalSince1970: 1_000)
+        var prompt = try service.create(
+            Prompt(name: "Restore", content: "Original", createdAt: originalDate, updatedAt: originalDate)
+        )
         let originalVersionID = try XCTUnwrap(prompt.activeVersionId)
         prompt.content = "Changed"
-        prompt.updatedAt = Date()
+        prompt.updatedAt = originalDate.addingTimeInterval(100)
         prompt = try service.save(prompt)
+        let previousVersions = try versionRepo.fetchAll(promptId: prompt.id)
+        let beforeRestore = Date()
 
         let restored = try service.restore(promptId: prompt.id, versionId: originalVersionID)
+        let afterRestore = Date()
         XCTAssertEqual(restored.content, "Original")
         let versions = try versionRepo.fetchAll(promptId: prompt.id)
         XCTAssertEqual(versions.map(\.versionNumber), [3, 2, 1])
         XCTAssertEqual(versions.first?.origin, .restore)
         XCTAssertNotEqual(restored.activeVersionId, originalVersionID)
+        // GRDB serializes database dates at millisecond precision.
+        XCTAssertGreaterThanOrEqual(restored.updatedAt, beforeRestore.addingTimeInterval(-0.001))
+        XCTAssertLessThanOrEqual(restored.updatedAt, afterRestore.addingTimeInterval(0.001))
+        XCTAssertEqual(try XCTUnwrap(versions.first).createdAt, restored.updatedAt)
+        XCTAssertEqual(restored.createdAt, originalDate)
+        XCTAssertEqual(Array(versions.dropFirst()), previousVersions)
     }
 
     func testCurrentPromptSchemaHasNoLegacyVersionedColumns() throws {

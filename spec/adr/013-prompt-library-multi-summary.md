@@ -37,7 +37,9 @@ Creating a prompt creates version 1. Saving a change to versioned values creates
 and activates exactly one new version in the same transaction. A no-op save
 creates no version. Restoring a historical version copies its values into a new,
 monotonically numbered version; history is never rewritten and the active
-pointer is never moved backwards. Runtime consumers obtain the resolved active
+pointer is never moved backwards. The new version's `createdAt` and the prompt's
+`updatedAt` record the restoration time; historical timestamps remain unchanged.
+Runtime consumers obtain the resolved active
 prompt from `PromptRepository`; they do not join version tables themselves.
 The old `prompts.content` and `prompts.inferenceSettings` columns may exist only
 during a bounded migration window and are not maintained as permanent mirrors.
@@ -57,6 +59,17 @@ settings, and model selection. Retry and completed-result snapshots remain
 stable after later edits or classification changes. Result rows retain their
 self-contained name/content/settings snapshots even when the originating
 prompt or version is deleted.
+
+Model discovery supplies selection choices, not an exhaustive allowlist: valid
+provider aliases need not appear in that list. Runtime rejects empty or locally
+incompatible model identifiers and otherwise sends the requested identifier to
+the generation endpoint. Provider rejection is surfaced without switching models.
+Local CLI commands control their own model selection, so an override differing
+from the configured model is rejected before launching the command. An unchanged
+model snapshot and an inherited model continue to use that command.
+
+Version comparison runs away from the main actor and publishes only the current
+selection's result; rendering the history view does not recompute the diff.
 
 User-defined classification is label-only and applies to every transcription
 source. A result prompt may target zero or more labels. Zero targets means the

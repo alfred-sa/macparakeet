@@ -87,6 +87,29 @@ final class PromptDiffServiceTests: XCTestCase {
         XCTAssertEqual(result.lines.count, 3)
     }
 
+    func testLargeComparisonPreservesLineAlignmentAndWordRefinement() {
+        let oldLines = (0..<500).map {
+            "Instruction \($0): résumer le contexte, les décisions et les actions de cette réunion avec précision."
+        }
+        let newLines = oldLines.map { $0.replacingOccurrences(of: "précision", with: "concision") }
+
+        let result = PromptDiffService.markdownDiff(
+            from: oldLines.joined(separator: "\n"),
+            to: newLines.joined(separator: "\n")
+        )
+
+        XCTAssertEqual(result.lines.count, 500)
+        XCTAssertEqual(result.lines.map(\.kind), Array(repeating: .modified, count: 500))
+        XCTAssertEqual(result.lines.compactMap(\.oldText), oldLines)
+        XCTAssertEqual(result.lines.compactMap(\.newText), newLines)
+        for (index, line) in result.lines.enumerated() {
+            XCTAssertEqual(line.oldLineNumber, index + 1)
+            XCTAssertEqual(line.newLineNumber, index + 1)
+            XCTAssertEqual(line.oldSegments.filter { $0.kind == .removed }.map(\.text), ["précision"])
+            XCTAssertEqual(line.newSegments.filter { $0.kind == .added }.map(\.text), ["concision"])
+        }
+    }
+
     func testStructuredDiffReportsOnlyChangedInferenceFieldsInStableOrder() {
         let oldSettings = PromptInferenceSettings(
             temperature: 0.2,

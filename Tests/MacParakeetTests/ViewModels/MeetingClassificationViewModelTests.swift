@@ -101,6 +101,98 @@ final class MeetingClassificationViewModelTests: XCTestCase {
         XCTAssertEqual(service.updateCalls.last?.labelIDs, created.map { Set([$0.id]) })
     }
 
+    func testEarlyLabelIntentsWaitForBaselineAndPreserveExistingTypeAndLabels() async {
+        let customer = MeetingType(name: "Customer")
+        let existing = MeetingLabel(name: "Existing")
+        let removed = MeetingLabel(name: "Removed")
+        let added = MeetingLabel(name: "Added")
+        let transcriptionID = UUID()
+        let service = MeetingClassificationServiceMock()
+        service.availableTypes = [customer.id: customer]
+        service.availableLabels = [existing.id: existing, removed.id: removed, added.id: added]
+        service.values[transcriptionID] = MeetingClassification(
+            meetingType: customer, labels: [existing, removed]
+        )
+        let gate = ClassificationReadGate()
+        service.onClassificationRead = { _, snapshot in gate.blockFirstReadReturning(snapshot) }
+        let viewModel = MeetingClassificationViewModel()
+        viewModel.configure(
+            typeRepository: MeetingTypeRepositoryMock(items: [customer]),
+            labelRepository: MeetingLabelRepositoryMock(items: [existing, removed, added]),
+            service: service
+        )
+
+        let first = viewModel.toggleLabel(added.id, for: transcriptionID)
+        await Task.detached { gate.waitUntilFirstReadStarted() }.value
+        let second = viewModel.toggleLabel(removed.id, for: transcriptionID)
+        let third = viewModel.toggleLabel(existing.id, for: transcriptionID)
+        let fourth = viewModel.toggleLabel(existing.id, for: transcriptionID)
+        XCTAssertTrue(service.updateCalls.isEmpty)
+        XCTAssertNil(viewModel.classification(for: transcriptionID))
+        XCTAssertTrue(viewModel.updatingTranscriptionIDs.contains(transcriptionID))
+
+        gate.allowFirstReadToFinish()
+        for task in [first, second, third, fourth] {
+            await task.value
+        }
+
+        XCTAssertEqual(service.updateCalls.count, 1)
+        XCTAssertEqual(service.updateCalls.first?.meetingTypeID, customer.id)
+        XCTAssertEqual(service.updateCalls.first?.labelIDs, [existing.id, added.id])
+        XCTAssertEqual(viewModel.classification(for: transcriptionID)?.meetingType, customer)
+        XCTAssertFalse(viewModel.updatingTranscriptionIDs.contains(transcriptionID))
+    }
+
+    func testEarlyMeetingTypeChangePreservesExistingLabels() async {
+        let customer = MeetingType(name: "Customer")
+        let existing = MeetingLabel(name: "Existing")
+        let transcriptionID = UUID()
+        let service = MeetingClassificationServiceMock()
+        service.availableTypes = [customer.id: customer]
+        service.availableLabels = [existing.id: existing]
+        service.values[transcriptionID] = MeetingClassification(meetingType: nil, labels: [existing])
+        let viewModel = MeetingClassificationViewModel()
+        viewModel.configure(
+            typeRepository: MeetingTypeRepositoryMock(items: [customer]),
+            labelRepository: MeetingLabelRepositoryMock(items: [existing]),
+            service: service
+        )
+
+        await viewModel.setMeetingType(customer.id, for: transcriptionID).value
+
+        XCTAssertEqual(service.updateCalls.first?.meetingTypeID, customer.id)
+        XCTAssertEqual(service.updateCalls.first?.labelIDs, [existing.id])
+    }
+
+    func testFailedInitialReadDoesNotWriteAndRetryDoesNotReplayFailedClicks() async {
+        let existing = MeetingLabel(name: "Existing")
+        let added = MeetingLabel(name: "Added")
+        let transcriptionID = UUID()
+        let service = MeetingClassificationServiceMock()
+        service.availableLabels = [existing.id: existing, added.id: added]
+        service.values[transcriptionID] = MeetingClassification(meetingType: nil, labels: [existing])
+        service.onClassificationRead = { _, _ in throw CocoaError(.fileReadUnknown) }
+        let viewModel = MeetingClassificationViewModel()
+        viewModel.configure(
+            typeRepository: MeetingTypeRepositoryMock(items: []),
+            labelRepository: MeetingLabelRepositoryMock(items: [existing, added]),
+            service: service
+        )
+
+        await viewModel.toggleLabel(existing.id, for: transcriptionID).value
+
+        XCTAssertTrue(service.updateCalls.isEmpty)
+        XCTAssertNil(viewModel.classification(for: transcriptionID))
+        XCTAssertNotNil(viewModel.errorMessage)
+        XCTAssertFalse(viewModel.updatingTranscriptionIDs.contains(transcriptionID))
+
+        service.onClassificationRead = nil
+        await viewModel.toggleLabel(added.id, for: transcriptionID).value
+
+        XCTAssertEqual(service.updateCalls.first?.labelIDs, [existing.id, added.id])
+        XCTAssertNil(viewModel.errorMessage)
+    }
+
     func testRapidLabelTogglesAreCoalescedWithoutLosingEitherLabel() async {
         let customer = MeetingLabel(name: "Customer")
         let important = MeetingLabel(name: "Important")
@@ -182,19 +274,22 @@ final class MeetingClassificationViewModelTests: XCTestCase {
     }
 
     func testStaleLoadCannotOverwriteConcurrentMutation() async {
+        let customer = MeetingType(name: "Customer")
+        let existing = MeetingLabel(name: "Existing")
         let important = MeetingLabel(name: "Important")
         let transcriptionID = UUID()
         let service = MeetingClassificationServiceMock()
-        service.availableLabels = [important.id: important]
-        service.values[transcriptionID] = MeetingClassification(meetingType: nil, labels: [])
+        service.availableTypes = [customer.id: customer]
+        service.availableLabels = [existing.id: existing, important.id: important]
+        service.values[transcriptionID] = MeetingClassification(meetingType: customer, labels: [existing])
         let readGate = ClassificationReadGate()
         service.onClassificationRead = { _, snapshot in
             readGate.blockFirstReadReturning(snapshot)
         }
         let viewModel = MeetingClassificationViewModel()
         viewModel.configure(
-            typeRepository: MeetingTypeRepositoryMock(items: []),
-            labelRepository: MeetingLabelRepositoryMock(items: [important]),
+            typeRepository: MeetingTypeRepositoryMock(items: [customer]),
+            labelRepository: MeetingLabelRepositoryMock(items: [existing, important]),
             service: service
         )
         await viewModel.loadOptions().value
@@ -207,9 +302,10 @@ final class MeetingClassificationViewModelTests: XCTestCase {
         await staleLoad.value
 
         XCTAssertEqual(
-            viewModel.classification(for: transcriptionID)?.labels.map(\.id),
-            [important.id]
+            Set(viewModel.classification(for: transcriptionID)?.labels.map(\.id) ?? []),
+            [existing.id, important.id]
         )
+        XCTAssertEqual(viewModel.classification(for: transcriptionID)?.meetingType, customer)
     }
 
     func testLoadClassificationsRefreshesCachedMeetingAfterExternalChange() async {
@@ -292,14 +388,14 @@ private final class MeetingClassificationServiceMock: MeetingClassificationServi
     var setTypeCalls: [(UUID, UUID?)] = []
     var replaceLabelCalls: [(UUID, Set<UUID>)] = []
     var updateCalls: [UpdateCall] = []
-    var onClassificationRead: ((UUID, MeetingClassification) -> MeetingClassification)?
+    var onClassificationRead: ((UUID, MeetingClassification) throws -> MeetingClassification)?
 
     func classification(for transcriptionId: UUID) throws -> MeetingClassification {
         lock.lock()
         let snapshot = values[transcriptionId] ?? MeetingClassification(meetingType: nil, labels: [])
         let hook = onClassificationRead
         lock.unlock()
-        return hook?(transcriptionId, snapshot) ?? snapshot
+        return try hook?(transcriptionId, snapshot) ?? snapshot
     }
 
     func setMeetingType(_ meetingTypeId: UUID?, for transcriptionId: UUID) async throws {

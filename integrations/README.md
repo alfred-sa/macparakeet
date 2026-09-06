@@ -493,7 +493,17 @@ and must not infer provider support from `inferenceSettings` alone.
 Prompt history is immutable. Restoring an old version creates and activates a
 new version; it never rewrites history. `prompts delete` is recoverable with
 `prompts restore-deleted`, including for built-ins. Built-in status is
-provenance rather than a mutation restriction.
+provenance rather than a mutation restriction. A restored version's `createdAt`
+and the prompt's `updatedAt` record the restoration time.
+
+`prompts run` uses the app's label availability rules for every transcription
+source. An untargeted prompt is available everywhere; a targeted prompt needs
+at least one matching label. Legacy meeting-type policies do not override
+these rules. Manual runs do not require auto-run to be enabled.
+
+Model discovery is advisory: providers validate requested model names and
+aliases when generation runs. Local CLI cannot apply a different prompt model
+override to its configured command and rejects it before executing the command.
 
 `<id-or-prefix>` accepts a full UUID, a UUID prefix (>= 4 chars), or the
 case-insensitive name. Ambiguous prefixes return a `.ambiguous` error so the
@@ -554,10 +564,10 @@ macparakeet-cli meetings classify <meeting> --type "Customer" --add-label "QBR" 
 macparakeet-cli meetings classify <meeting> --type none --remove-label "QBR" --json
 ```
 
-A meeting has zero or one primary type and any number of labels. Type drives
-prompt availability; labels are descriptive/search facets. Names remain local
-user data. Changing a completed meeting's classification does not rerun prompts
-retroactively.
+The compatibility surface retains zero or one primary type and any number of
+labels per meeting. Labels drive prompt availability and support search;
+legacy types no longer control prompt selection. Names remain local user data.
+Changing a completed meeting's classification does not rerun prompts retroactively.
 
 Use `meetings notes` for user-authored notes. Use `meetings results add` for
 externally generated summaries, decisions, action items, or other agent output;

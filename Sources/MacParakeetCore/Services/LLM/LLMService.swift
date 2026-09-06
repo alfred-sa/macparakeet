@@ -574,7 +574,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let context = try context(baseContext, overridingModelWith: modelOverride)
-        try await validateDiscoveredModelOverride(modelOverride, in: baseContext)
         let config = context.providerConfig
         let resolution = PromptInferenceCapabilityResolver.resolve(
             config: config,
@@ -775,7 +774,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             messageCount: 2
         )
         let context = try context(baseContext, overridingModelWith: modelOverride)
-        try await validateDiscoveredModelOverride(modelOverride, in: baseContext)
         let config = context.providerConfig
         let resolution = PromptInferenceCapabilityResolver.resolve(
             config: config,
@@ -1088,7 +1086,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     do {
                         let baseContext = try self.loadContext()
                         context = try self.context(baseContext, overridingModelWith: modelOverride)
-                        try await self.validateDiscoveredModelOverride(modelOverride, in: baseContext)
                     } catch {
                         self.sendLLMOperation(
                             operationID: operationID,
@@ -1335,7 +1332,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
                     do {
                         let baseContext = try self.loadContext()
                         context = try self.context(baseContext, overridingModelWith: modelOverride)
-                        try await self.validateDiscoveredModelOverride(modelOverride, in: baseContext)
                     } catch {
                         self.sendLLMOperation(
                             operationID: operationID,
@@ -1457,6 +1453,15 @@ public final class LLMService: LLMServiceProtocol, Sendable {
         }
         guard modelOverride != context.providerConfig.modelName else { return context }
 
+        guard context.providerConfig.id != .localCLI else {
+            throw LLMError.invalidModelOverride(
+                model: modelOverride,
+                provider: .localCLI,
+                reason: "the configured CLI command controls its model. "
+                    + "Remove the override or change the command in Settings."
+            )
+        }
+
         let config = context.providerConfig
         return LLMExecutionContext(
             providerConfig: LLMProviderConfig(
@@ -1473,7 +1478,8 @@ public final class LLMService: LLMServiceProtocol, Sendable {
     /// Rejects provider/model combinations that can be disproved without a
     /// network request. OpenAI-compatible and local runtimes intentionally
     /// accept arbitrary non-empty identifiers because their installed model
-    /// sets are endpoint-specific and only available asynchronously.
+    /// sets are endpoint-specific. Discovery lists can omit valid aliases, so
+    /// the generation endpoint validates existence without a fallback model.
     private static func isLocallyCompatible(_ model: String, with provider: LLMProviderID) -> Bool {
         switch provider {
         case .anthropic:
@@ -1485,44 +1491,6 @@ public final class LLMService: LLMServiceProtocol, Sendable {
             return components.count == 2 && components.allSatisfy { !$0.isEmpty }
         case .openai, .openaiCompatible, .ollama, .lmstudio, .localCLI, .inProcessLocal:
             return true
-        }
-    }
-
-    /// Uses provider discovery as an authoritative preflight only when the
-    /// endpoint succeeds and returns at least one usable model. Unsupported or
-    /// temporarily unavailable discovery keeps the existing best-effort
-    /// behavior; generation remains the source of truth in that case.
-    private func validateDiscoveredModelOverride(
-        _ modelOverride: String?,
-        in baseContext: LLMExecutionContext
-    ) async throws {
-        guard let rawModelOverride = modelOverride,
-              baseContext.providerConfig.id.supportsModelListing
-        else { return }
-        let modelOverride = rawModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !modelOverride.isEmpty else { return } // Rejected by the local preflight.
-
-        let discoveredModels: [String]
-        do {
-            discoveredModels = try await client.listModels(context: baseContext)
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            return
-        }
-
-        var seen = Set<String>()
-        let normalizedModels = discoveredModels
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .filter { seen.insert($0).inserted }
-        guard !normalizedModels.isEmpty else { return }
-        guard normalizedModels.contains(modelOverride) else {
-            throw LLMError.invalidModelOverride(
-                model: modelOverride,
-                provider: baseContext.providerConfig.id,
-                reason: "the active provider does not advertise this model."
-            )
         }
     }
 

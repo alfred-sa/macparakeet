@@ -84,6 +84,7 @@ public final class PromptEditingService: PromptEditingServiceProtocol {
             restored.content = source.content
             restored.inferenceSettings = source.inferenceSettings
             restored.modelOverride = source.modelOverride
+            restored.updatedAt = Date()
             return try save(restored, origin: .restore, changeNote: changeNote, forceVersion: true, db: db)
         }
     }

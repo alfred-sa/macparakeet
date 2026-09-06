@@ -798,12 +798,13 @@ extension PromptsCommand {
                 let projection = try speakerAttributionReader.resolve(transcription: automaticTranscript)
                 let transcript = projection.effectiveTranscription
 
-                let resolution = try PromptApplicabilityResolver(
-                    policyRepository: PromptMeetingPolicyRepository(dbQueue: db.dbQueue)
-                ).resolve(
+                let resolution = try PromptLabelApplicabilityResolver.resolve(
                     prompt: prompt,
                     sourceType: transcript.sourceType,
-                    meetingTypeId: transcript.meetingTypeId
+                    transcriptionLabelIDs: TranscriptionMeetingLabelRepository(dbQueue: db.dbQueue)
+                        .labelIDs(for: transcript.id),
+                    policies: PromptLabelPolicyRepository(dbQueue: db.dbQueue)
+                        .fetchPolicies(promptId: prompt.id)
                 )
                 guard resolution.isAvailable else {
                     throw PromptCLIError.promptUnavailable(prompt.name, resolution.reason.rawValue)

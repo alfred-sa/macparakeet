@@ -116,7 +116,19 @@ with human progress/status kept off stdout.
   identity, deterministic Markdown source hunks, and structured changed
   settings/model values. Restore and soft-delete mutators return the resolved
   affected prompt object; restore creates a new version and never rewrites an
-  old one.
+  old one. The new version's `createdAt` and the prompt's `updatedAt` record
+  the restoration time.
+- `prompts run` checks label availability before provider execution for every
+  transcription source, using the same rules as the app. No label targets means
+  available everywhere; when targeted, at least one transcription label must
+  match. Legacy meeting-type policies do not control runtime availability.
+  Hidden and non-result prompts remain unavailable. Source-scoped auto-run
+  settings do not prevent a manually requested run of an available prompt.
+- A prompt model override is passed to the selected provider, which validates
+  its model identifiers and aliases during generation. Model discovery results
+  are not an exhaustive allow-list. For the Local CLI provider, an override
+  differing from the configured model is rejected before command execution:
+  changing a model string cannot reconfigure its command template.
 - LLM result JSON envelopes include additive optional `effectiveSettings` with
   the same object shape. For `prompts run --json`, a present value is the
   normalized adapter receipt after provider/model filtering. Absence means no

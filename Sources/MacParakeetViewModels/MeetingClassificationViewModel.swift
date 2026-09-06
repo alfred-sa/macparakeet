@@ -23,6 +23,7 @@ public final class MeetingClassificationViewModel {
     @ObservationIgnored private var mutationTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored private var mutationGenerations: [UUID: Int] = [:]
     @ObservationIgnored private var desiredClassifications: [UUID: DesiredClassification] = [:]
+    @ObservationIgnored private var initialMutationIntents: [UUID: [ClassificationMutation]] = [:]
     @ObservationIgnored private let logger = Logger(
         subsystem: "com.macparakeet.viewmodels",
         category: "MeetingClassification"
@@ -127,22 +128,12 @@ public final class MeetingClassificationViewModel {
 
     @discardableResult
     public func setMeetingType(_ meetingTypeID: UUID?, for transcriptionID: UUID) -> Task<Void, Never> {
-        guard service != nil else { return Task {} }
-        var desired = desiredClassification(for: transcriptionID)
-        desired.meetingTypeID = meetingTypeID
-        return enqueue(desired, for: transcriptionID)
+        enqueue(.setMeetingType(meetingTypeID), for: transcriptionID)
     }
 
     @discardableResult
     public func toggleLabel(_ labelID: UUID, for transcriptionID: UUID) -> Task<Void, Never> {
-        guard service != nil else { return Task {} }
-        var desired = desiredClassification(for: transcriptionID)
-        if desired.labelIDs.contains(labelID) {
-            desired.labelIDs.remove(labelID)
-        } else {
-            desired.labelIDs.insert(labelID)
-        }
-        return enqueue(desired, for: transcriptionID)
+        enqueue(.toggleLabel(labelID), for: transcriptionID)
     }
 
     @discardableResult
@@ -227,12 +218,54 @@ public final class MeetingClassificationViewModel {
         errorMessage = nil
     }
 
-    private func desiredClassification(for transcriptionID: UUID) -> DesiredClassification {
-        desiredClassifications[transcriptionID]
-            ?? DesiredClassification(
-                meetingTypeID: classifications[transcriptionID]?.meetingType?.id,
-                labelIDs: Set(classifications[transcriptionID]?.labels.map(\.id) ?? [])
-            )
+    private func enqueue(
+        _ intent: ClassificationMutation,
+        for transcriptionID: UUID
+    ) -> Task<Void, Never> {
+        guard let service else { return Task {} }
+        if var desired = desiredClassifications[transcriptionID]
+            ?? classifications[transcriptionID].map(DesiredClassification.init)
+        {
+            intent.apply(to: &desired)
+            return enqueue(desired, for: transcriptionID)
+        }
+
+        // A missing cache entry is unknown, not an empty classification. Keep
+        // ordered click intents until a database read provides the baseline.
+        initialMutationIntents[transcriptionID, default: []].append(intent)
+        if let task = mutationTasks[transcriptionID] {
+            return task
+        }
+        classificationLoadGenerations[transcriptionID, default: 0] += 1
+        classificationTasks[transcriptionID]?.cancel()
+        classificationTasks[transcriptionID] = nil
+        updatingTranscriptionIDs.insert(transcriptionID)
+        errorMessage = nil
+
+        let task = Task { @MainActor [weak self, service] in
+            do {
+                let baseline = try await Task.detached(priority: .userInitiated) {
+                    try service.classification(for: transcriptionID)
+                }.value
+                guard let self, !Task.isCancelled else { return }
+                self.classifications[transcriptionID] = baseline
+                var desired = DesiredClassification(baseline)
+                for intent in self.initialMutationIntents.removeValue(forKey: transcriptionID) ?? [] {
+                    intent.apply(to: &desired)
+                }
+                self.desiredClassifications[transcriptionID] = desired
+                self.mutationGenerations[transcriptionID, default: 0] += 1
+                self.publishOptimistic(desired, for: transcriptionID)
+                await self.drainMutations(for: transcriptionID)
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.initialMutationIntents[transcriptionID] = nil
+                self.report(error, action: "load meeting classification")
+                self.finishMutations(for: transcriptionID)
+            }
+        }
+        mutationTasks[transcriptionID] = task
+        return task
     }
 
     private func enqueue(
@@ -337,4 +370,27 @@ public final class MeetingClassificationViewModel {
 private struct DesiredClassification: Sendable, Equatable {
     var meetingTypeID: UUID?
     var labelIDs: Set<UUID>
+
+    init(_ classification: MeetingClassification) {
+        meetingTypeID = classification.meetingType?.id
+        labelIDs = Set(classification.labels.map(\.id))
+    }
+}
+
+private enum ClassificationMutation {
+    case setMeetingType(UUID?)
+    case toggleLabel(UUID)
+
+    func apply(to desired: inout DesiredClassification) {
+        switch self {
+        case .setMeetingType(let id):
+            desired.meetingTypeID = id
+        case .toggleLabel(let id):
+            if desired.labelIDs.contains(id) {
+                desired.labelIDs.remove(id)
+            } else {
+                desired.labelIDs.insert(id)
+            }
+        }
+    }
 }

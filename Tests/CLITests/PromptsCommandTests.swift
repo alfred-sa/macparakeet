@@ -213,43 +213,90 @@ final class PromptsCommandTests: XCTestCase {
         XCTAssertFalse(policy.isAutoRun)
     }
 
-    func testRunRejectsPromptUnavailableForMeetingBeforeProviderExecution() async throws {
+    func testRunRejectsNonmatchingLabelForEverySourceBeforeProviderExecution() async throws {
         let databaseURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("prompt-cli-policy-\(UUID().uuidString).db")
+            .appendingPathComponent("prompt-cli-label-policy-\(UUID().uuidString).db")
         defer { try? FileManager.default.removeItem(at: databaseURL) }
         let database = try DatabaseManager(path: databaseURL.path)
         let prompt = try PromptEditingService(dbQueue: database.dbQueue).create(
-            Prompt(name: "Restricted meeting prompt", content: "Summarize.")
+            Prompt(name: "Restricted label prompt", content: "Summarize.")
+        )
+        let target = MeetingLabel(name: "Required")
+        let unrelated = MeetingLabel(name: "Unrelated")
+        let labels = MeetingLabelRepository(dbQueue: database.dbQueue)
+        try labels.save(target)
+        try labels.save(unrelated)
+        try PromptLabelPolicyRepository(dbQueue: database.dbQueue).replaceTargetLabels(
+            promptId: prompt.id, labelIds: [target.id]
+        )
+
+        for source in Transcription.SourceType.allCases {
+            for hasUnrelatedLabel in [false, true] {
+                let transcription = Transcription(
+                    fileName: "Restricted \(source.rawValue)",
+                    rawTranscript: "A transcript that must not reach the provider.",
+                    status: .completed,
+                    sourceType: source
+                )
+                try TranscriptionRepository(dbQueue: database.dbQueue).save(transcription)
+                if hasUnrelatedLabel {
+                    try TranscriptionMeetingLabelRepository(dbQueue: database.dbQueue)
+                        .add(labelId: unrelated.id, to: transcription.id)
+                }
+                let command = try PromptsCommand.RunSubcommand.parse([
+                    prompt.id.uuidString, "--transcription", transcription.id.uuidString,
+                    "--provider", "cli", "--command", "/usr/bin/printf unexpected-provider-execution",
+                    "--no-store", "--database", databaseURL.path,
+                ])
+                do {
+                    try await command.run()
+                    XCTFail("Expected label policy rejection for \(source.rawValue)")
+                } catch {
+                    XCTAssertTrue(error.localizedDescription.contains("is unavailable"), "\(error)")
+                    XCTAssertTrue(error.localizedDescription.contains("allLabelsPolicy"), "\(error)")
+                }
+            }
+        }
+    }
+
+    func testRunAcceptsMatchingLabelForEverySourceDespiteLegacyMeetingDenial() async throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompt-cli-matching-label-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+        let database = try DatabaseManager(path: databaseURL.path)
+        let prompt = try PromptEditingService(dbQueue: database.dbQueue).create(
+            Prompt(name: "Label prompt", content: "Summarize.", isAutoRun: false)
+        )
+        let firstTarget = MeetingLabel(name: "First target")
+        let secondTarget = MeetingLabel(name: "Second target")
+        let labels = MeetingLabelRepository(dbQueue: database.dbQueue)
+        try labels.save(firstTarget)
+        try labels.save(secondTarget)
+        try PromptLabelPolicyRepository(dbQueue: database.dbQueue).replaceTargetLabels(
+            promptId: prompt.id, labelIds: [firstTarget.id, secondTarget.id]
         )
         _ = try PromptMeetingPolicyRepository(dbQueue: database.dbQueue).setAllMeetingsPolicy(
-            promptId: prompt.id,
-            isAvailable: false,
-            isAutoRun: false,
-            sortOrder: nil
+            promptId: prompt.id, isAvailable: false, isAutoRun: false, sortOrder: nil
         )
-        let meeting = Transcription(
-            fileName: "Restricted meeting",
-            rawTranscript: "A transcript that must not reach the provider.",
-            status: .completed,
-            sourceType: .meeting
-        )
-        try TranscriptionRepository(dbQueue: database.dbQueue).save(meeting)
 
-        let command = try PromptsCommand.RunSubcommand.parse([
-            prompt.id.uuidString,
-            "--transcription", meeting.id.uuidString,
-            "--provider", "anthropic",
-            "--api-key", "unused",
-            "--no-store",
-            "--database", databaseURL.path,
-        ])
-
-        do {
+        for source in Transcription.SourceType.allCases {
+            let transcription = Transcription(
+                fileName: "Matching \(source.rawValue)", rawTranscript: "Transcript.",
+                status: .completed, sourceType: source
+            )
+            try TranscriptionRepository(dbQueue: database.dbQueue).save(transcription)
+            try TranscriptionMeetingLabelRepository(dbQueue: database.dbQueue)
+                .add(labelId: secondTarget.id, to: transcription.id)
+            let command = try PromptsCommand.RunSubcommand.parse([
+                prompt.id.uuidString, "--transcription", transcription.id.uuidString,
+                "--provider", "cli", "--command", "/usr/bin/printf label-policy-accepted",
+                "--database", databaseURL.path,
+            ])
             try await command.run()
-            XCTFail("Expected the meeting policy to reject the prompt")
-        } catch {
-            XCTAssertTrue(error.localizedDescription.contains("is unavailable"))
-            XCTAssertTrue(error.localizedDescription.contains("allMeetingsPolicy"))
+            let results = try PromptResultRepository(dbQueue: database.dbQueue)
+                .fetchAll(transcriptionId: transcription.id)
+            XCTAssertEqual(results.count, 1)
+            XCTAssertEqual(results.first?.content, "label-policy-accepted")
         }
     }
 

@@ -289,6 +289,9 @@ public enum PromptDiffService {
             return zipLongLines(old: old, new: new)
         }
 
+        // Tokenize each line once, rather than twice for every matrix cell.
+        let oldWords = old.map(words)
+        let newWords = new.map(words)
         var distance = Array(
             repeating: Array(repeating: 0, count: new.count + 1),
             count: old.count + 1
@@ -303,8 +306,8 @@ public enum PromptDiffService {
                         distance[oldIndex][newIndex] = distance[oldIndex - 1][newIndex - 1]
                     } else {
                         let substitutionCost = lineSubstitutionCost(
-                            from: old[oldIndex - 1],
-                            to: new[newIndex - 1]
+                            from: oldWords[oldIndex - 1],
+                            to: newWords[newIndex - 1]
                         )
                         distance[oldIndex][newIndex] = min(
                             distance[oldIndex - 1][newIndex - 1] + substitutionCost,
@@ -332,7 +335,7 @@ public enum PromptDiffService {
             } else if oldIndex > 0, newIndex > 0,
                 distance[oldIndex][newIndex]
                     == distance[oldIndex - 1][newIndex - 1]
-                    + lineSubstitutionCost(from: old[oldIndex - 1], to: new[newIndex - 1])
+                    + lineSubstitutionCost(from: oldWords[oldIndex - 1], to: newWords[newIndex - 1])
             {
                 operations.append(.modified(old: old[oldIndex - 1], new: new[newIndex - 1]))
                 oldIndex -= 1
@@ -351,10 +354,12 @@ public enum PromptDiffService {
     }
 
     /// Pairing related lines is cheaper than an independent removal and insertion.
-    private static func lineSubstitutionCost(from oldLine: String, to newLine: String) -> Int {
-        let oldWords = Set(tokens(in: oldLine).filter { $0.kind == .word }.map(\.text))
-        let newWords = Set(tokens(in: newLine).filter { $0.kind == .word }.map(\.text))
-        return oldWords.isDisjoint(with: newWords) ? 2 : 1
+    private static func lineSubstitutionCost(from oldWords: Set<String>, to newWords: Set<String>) -> Int {
+        oldWords.isDisjoint(with: newWords) ? 2 : 1
+    }
+
+    private static func words(in line: String) -> Set<String> {
+        Set(tokens(in: line).filter { $0.kind == .word }.map(\.text))
     }
 
     private static func zipLongLines(old: [String], new: [String]) -> [LineOperation] {

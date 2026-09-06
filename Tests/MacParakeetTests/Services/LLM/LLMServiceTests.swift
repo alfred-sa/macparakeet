@@ -107,8 +107,10 @@ final class MockLLMClient: LLMClientProtocol, @unchecked Sendable {
 
     var modelsList: [String] = []
     var listModelsError: Error?
+    var listModelsCallCount = 0
 
     func listModels(context: LLMExecutionContext) async throws -> [String] {
+        listModelsCallCount += 1
         capturedContext = context
         if let error = listModelsError { throw error }
         return modelsList
@@ -576,81 +578,122 @@ final class LLMServiceTests: XCTestCase {
         XCTAssertEqual(mockClient.chatCompletionCallCount, 0)
     }
 
-    func testPromptResultRejectsOverrideMissingFromDiscoveredModelsBeforeClientRequest() async {
-        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
-        mockClient.modelsList = ["gpt-4.1", "gpt-5.5"]
+    func testPromptResultAcceptsOllamaAliasAbsentFromDiscovery() async throws {
+        mockConfigStore.config = .ollama(model: "mistral")
+        mockClient.modelsList = ["mistral:latest"]
+
+        _ = try await service.generatePromptResultDetailed(
+            transcript: "input text", systemPrompt: nil,
+            inferenceSettings: nil, modelOverride: "mistral"
+        )
+
+        XCTAssertEqual(mockClient.chatCompletionCallCount, 1)
+        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "mistral")
+        XCTAssertEqual(mockClient.listModelsCallCount, 0)
+    }
+
+    func testPromptResultStreamAcceptsProviderAliasAbsentFromDiscovery() async throws {
+        mockConfigStore.config = .anthropic(apiKey: "sk-test", model: "claude-default")
+        mockClient.modelsList = ["claude-sonnet-versioned"]
+
+        for try await _ in service.generatePromptResultDetailedStream(
+            transcript: "input text", systemPrompt: nil,
+            inferenceSettings: nil, modelOverride: "claude-sonnet-latest"
+        ) {}
+
+        XCTAssertEqual(mockClient.chatCompletionStreamCallCount, 1)
+        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "claude-sonnet-latest")
+        XCTAssertEqual(mockClient.listModelsCallCount, 0)
+    }
+
+    func testPromptResultPropagatesProviderModelRejectionWithoutFallback() async {
+        mockClient.modelsList = ["gpt-existing"]
+        mockClient.chatCompletionError = LLMError.modelNotFound("gpt-missing")
 
         do {
             _ = try await service.generatePromptResultDetailed(
-                transcript: "input text",
-                systemPrompt: nil,
-                inferenceSettings: nil,
-                modelOverride: "gpt-missing"
+                transcript: "input", systemPrompt: nil,
+                inferenceSettings: nil, modelOverride: "gpt-missing"
             )
-            XCTFail("Expected discovery to reject the missing model")
+            XCTFail("Expected the provider model error")
         } catch let error as LLMError {
-            guard case .invalidModelOverride(let model, let provider, let reason) = error else {
-                return XCTFail("Unexpected LLM error: \(error)")
+            guard case .modelNotFound(let model) = error else {
+                return XCTFail("Unexpected error: \(error)")
             }
             XCTAssertEqual(model, "gpt-missing")
-            XCTAssertEqual(provider, .openai)
-            XCTAssertTrue(reason.contains("does not advertise"))
         } catch {
             XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertEqual(mockClient.chatCompletionCallCount, 0)
-    }
-
-    func testPromptResultRunsOverridePresentInNormalizedDiscoveredModels() async throws {
-        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
-        mockClient.modelsList = ["  gpt-target  ", "gpt-target", ""]
-
-        _ = try await service.generatePromptResultDetailed(
-            transcript: "input text",
-            systemPrompt: nil,
-            inferenceSettings: nil,
-            modelOverride: "gpt-target"
-        )
-
         XCTAssertEqual(mockClient.chatCompletionCallCount, 1)
-        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "gpt-target")
+        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "gpt-missing")
     }
 
-    func testPromptResultFallsBackToGenerationWhenModelDiscoveryFails() async throws {
-        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
-        mockClient.listModelsError = LLMError.connectionFailed("models unavailable")
-
-        _ = try await service.generatePromptResultDetailed(
-            transcript: "input text",
-            systemPrompt: nil,
-            inferenceSettings: nil,
-            modelOverride: "gpt-target"
+    func testTransformAcceptsOllamaAliasForBothExecutionPaths() async throws {
+        mockConfigStore.config = .ollama(model: "mistral")
+        mockClient.modelsList = ["mistral:latest"]
+        _ = try await service.transformDetailed(
+            text: "input", prompt: "Rewrite", inferenceSettings: nil, modelOverride: "mistral"
         )
-
-        XCTAssertEqual(mockClient.chatCompletionCallCount, 1)
-        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "gpt-target")
+        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "mistral")
+        for try await _ in service.transformStream(
+            text: "input", prompt: "Rewrite", inferenceSettings: nil, modelOverride: "mistral"
+        ) {}
+        XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "mistral")
+        XCTAssertEqual(mockClient.listModelsCallCount, 0)
     }
 
-    func testPromptResultStreamRejectsUndiscoveredOverrideBeforeStreamingRequest() async {
-        mockConfigStore.config = .openai(apiKey: "sk-test", model: "gpt-4.1")
-        mockClient.modelsList = ["gpt-4.1"]
-
-        do {
-            for try await _ in service.generatePromptResultDetailedStream(
-                transcript: "input text",
-                systemPrompt: nil,
-                inferenceSettings: nil,
-                modelOverride: "gpt-missing"
-            ) {}
-            XCTFail("Expected discovery to reject the missing model")
-        } catch let error as LLMError {
-            guard case .invalidModelOverride = error else {
-                return XCTFail("Unexpected LLM error: \(error)")
+    func testLocalCLIRejectsDifferentModelAcrossPromptAndTransformPaths() async {
+        mockConfigStore.config = .localCLI()
+        for path in 0..<4 {
+            do {
+                switch path {
+                case 0:
+                    _ = try await service.generatePromptResultDetailed(
+                        transcript: "input", systemPrompt: nil,
+                        inferenceSettings: nil, modelOverride: "different-model"
+                    )
+                case 1:
+                    for try await _ in service.generatePromptResultDetailedStream(
+                        transcript: "input", systemPrompt: nil,
+                        inferenceSettings: nil, modelOverride: "different-model"
+                    ) {}
+                case 2:
+                    _ = try await service.transformDetailed(
+                        text: "input", prompt: "Rewrite",
+                        inferenceSettings: nil, modelOverride: "different-model"
+                    )
+                default:
+                    for try await _ in service.transformStream(
+                        text: "input", prompt: "Rewrite",
+                        inferenceSettings: nil, modelOverride: "different-model"
+                    ) {}
+                }
+                XCTFail("Expected Local CLI model rejection for path \(path)")
+            } catch let error as LLMError {
+                guard case .invalidModelOverride(let model, let provider, let reason) = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+                XCTAssertEqual(model, "different-model")
+                XCTAssertEqual(provider, .localCLI)
+                XCTAssertTrue(reason.contains("command controls its model"))
+            } catch {
+                XCTFail("Unexpected error: \(error)")
             }
-        } catch {
-            XCTFail("Unexpected error: \(error)")
         }
-        XCTAssertEqual(mockClient.chatCompletionStreamCallCount, 0)
+        XCTAssertNil(mockClient.capturedContext, "No client execution path should be reached")
+    }
+
+    func testLocalCLIPreservesUnchangedModelSnapshotAndInheritedModel() async throws {
+        mockConfigStore.config = .localCLI()
+        for model in [nil, "cli"] as [String?] {
+            _ = try await service.generatePromptResultDetailed(
+                transcript: "input", systemPrompt: nil,
+                inferenceSettings: nil, modelOverride: model
+            )
+            XCTAssertEqual(mockClient.capturedContext?.providerConfig.modelName, "cli")
+        }
+        XCTAssertEqual(mockClient.chatCompletionCallCount, 2)
+        XCTAssertEqual(mockConfigStore.config?.modelName, "cli")
     }
 
     func testPromptResultDetailedStreamEmitsOneTerminalReceipt() async throws {

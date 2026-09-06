@@ -59,6 +59,15 @@ and `spec --json` lives in `spec/contracts/cli-json-v1.md`.
 
 ### Fixed
 
+- `prompts run` now applies the same label availability rules as the app for
+  every transcription source. A matching target label is sufficient; legacy
+  meeting-type policies no longer override label availability.
+- Prompt restoration timestamps now record the restoration time on the new
+  version and the active prompt.
+- Provider model aliases are validated by the provider during generation,
+  instead of being rejected when absent from model discovery results. Local
+  CLI rejects a prompt model override that differs from the configured model
+  because its command template cannot apply that override.
 - `export`, `meetings show`, `meetings transcript`, `meetings export`, and
   meeting-artifact refreshes now render the active speaker corrections instead
   of silently falling back to automatic diarization.
