@@ -1318,7 +1318,10 @@ struct TranscriptResultView: View {
         let selectedID = activeTranscription.id
         let notesEditor = savedMeetingNotesViewModel
         promptNotesActionGate.start(
-            flush: { await notesEditor.flush() },
+            flush: {
+                guard await notesEditor.flush() else { return false }
+                return await viewModel.waitForCurrentSpeakerAttribution()
+            },
             isCurrent: {
                 viewModel.currentTranscription?.id == selectedID
                     && savedMeetingNotesViewModel === notesEditor
