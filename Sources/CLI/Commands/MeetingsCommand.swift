@@ -1078,9 +1078,9 @@ private func exportContent(
             transcription: transcription,
             promptResults: promptResults,
             artifactPaths: artifactPaths,
-            classification: MeetingArtifactClassificationSnapshot(classification),
             speakerCorrectionsApplied: projection.correctionsApplied,
-            speakerCorrectionRevision: projection.correctionRevision
+            speakerCorrectionRevision: projection.correctionRevision,
+            classification: MeetingArtifactClassificationSnapshot(classification)
         )
     case .json:
         let data = try cliJSONEncoder.encode(

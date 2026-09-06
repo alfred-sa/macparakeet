@@ -263,15 +263,32 @@ final class MeetingArtifactStoreTests: XCTestCase {
             ),
             correctionsApplied: true
         )
-
-        let snapshot = try await MeetingArtifactStore().materialize(
-            projection: projection,
-            promptResults: []
+        let labelID = UUID()
+        let classification = MeetingArtifactClassificationSnapshot(
+            meetingType: nil,
+            labels: [.init(
+                id: labelID,
+                name: "Reviewed",
+                colorToken: "green",
+                isArchived: false
+            )]
         )
 
+        let store: any MeetingArtifactStoring = MeetingArtifactStore()
+        let snapshot = try await store.materialize(
+            projection: projection,
+            promptResults: [],
+            classification: classification
+        )
+
+        XCTAssertEqual(snapshot.meetingLabels?.map(\.id), [labelID])
         let transcript = try jsonObject(at: URL(fileURLWithPath: snapshot.transcriptPath))
         XCTAssertEqual(transcript["speakerCorrectionsApplied"] as? Bool, true)
         XCTAssertEqual(transcript["speakerCorrectionRevision"] as? Int, 2)
+        XCTAssertEqual(
+            (transcript["meetingLabels"] as? [[String: Any]])?.first?["name"] as? String,
+            "Reviewed"
+        )
         let segments = try XCTUnwrap(transcript["transcriptSegments"] as? [[String: Any]])
         let spans = try XCTUnwrap(segments.first?["speakerSpans"] as? [[String: Any]])
         XCTAssertEqual(spans.count, 2)

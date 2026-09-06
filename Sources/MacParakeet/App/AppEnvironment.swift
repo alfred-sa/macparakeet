@@ -98,6 +98,7 @@ final class AppEnvironment {
         promptEditingService = PromptEditingService(dbQueue: databaseManager.dbQueue)
         promptResultRepo = PromptResultRepository(dbQueue: databaseManager.dbQueue)
         meetingArtifactStore = MeetingArtifactStore(
+            speakerAttributionReader: speakerAttributionReader,
             classificationProvider: { [databaseManager] transcriptionID in
                 let classification = try MeetingClassificationService(
                     dbQueue: databaseManager.dbQueue
