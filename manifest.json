@@ -1,0 +1,69 @@
+{
+  "source_commit": "fd6c323aacc4d2d642fdc7b4c9c8ff2c99fdcb0b",
+  "approved_by_author": true,
+  "synthetic_data": true,
+  "pull_requests": {
+    "955": [
+      {
+        "file": "screenshots/955-discover-default.png",
+        "caption": "Default build: Discover remains available."
+      },
+      {
+        "file": "screenshots/955-discover-disabled.png",
+        "caption": "Build with MACPARAKEET_DISABLE_DISCOVER=1: Discover is omitted from navigation."
+      }
+    ],
+    "956": [
+      {
+        "file": "screenshots/956-prompt-inference.png",
+        "caption": "Configure generation settings for an individual prompt."
+      }
+    ],
+    "957": [
+      {
+        "file": "screenshots/957-rich-markdown.png",
+        "caption": "Rich Markdown rendering in a saved prompt result."
+      }
+    ],
+    "958": [
+      {
+        "file": "screenshots/958-library-grid.png",
+        "caption": "Browse the Library in the thumbnail grid."
+      },
+      {
+        "file": "screenshots/958-library-list.png",
+        "caption": "Switch the Library to the compact list layout."
+      }
+    ],
+    "959": [
+      {
+        "file": "screenshots/959-saved-notes.png",
+        "caption": "Edit saved meeting notes in their dedicated Notes tab."
+      }
+    ],
+    "960": [
+      {
+        "file": "screenshots/960-speaker-turns.png",
+        "caption": "Review speaker turns in the timestamped transcript."
+      },
+      {
+        "file": "screenshots/960-speaker-correction.png",
+        "caption": "Correct speaker attribution from the transcript editing interface."
+      }
+    ],
+    "961": [
+      {
+        "file": "screenshots/961-prompt-collections.png",
+        "caption": "Organize the prompt library into collections."
+      },
+      {
+        "file": "screenshots/961-prompt-version-history.png",
+        "caption": "Inspect the saved version history of a prompt."
+      },
+      {
+        "file": "screenshots/961-prompt-version-diff.png",
+        "caption": "Compare changes between two prompt versions before restoring or editing."
+      }
+    ]
+  }
+}
