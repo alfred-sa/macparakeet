@@ -29,6 +29,43 @@ final class TranscriptionRepositoryTests: XCTestCase {
         XCTAssertEqual(fetched?.language, "en")
     }
 
+    func testCompletionMergePreservesClearedMetadataAndReturnsCommittedRow() throws {
+        let type = MeetingType(name: "Customer")
+        try MeetingTypeRepository(dbQueue: dbQueue).save(type)
+        var original = Transcription(
+            fileName: "Meeting", status: .completed, isFavorite: true,
+            sourceType: .meeting, meetingTypeId: type.id, userNotes: "Old notes",
+            titleOverride: "Old title"
+        )
+        try repo.save(original)
+        try repo.updateUserNotes(id: original.id, userNotes: nil)
+        try repo.updateMeetingType(id: original.id, meetingTypeId: nil)
+        try repo.updateTitleOverride(id: original.id, titleOverride: nil)
+        try repo.updateFavorite(id: original.id, isFavorite: false)
+        original.rawTranscript = "Replacement transcript"
+        let saved = try repo.savePreservingUserMetadata(original, originalFileName: original.fileName)
+        let persisted = try XCTUnwrap(repo.fetch(id: original.id))
+        for snapshot in [saved, persisted] {
+            XCTAssertNil(snapshot.userNotes)
+            XCTAssertNil(snapshot.meetingTypeId)
+            XCTAssertNil(snapshot.titleOverride)
+            XCTAssertFalse(snapshot.isFavorite)
+            XCTAssertEqual(snapshot.rawTranscript, "Replacement transcript")
+        }
+    }
+
+    func testCompletionAllowsGeneratedMeetingTitleWhenOriginalNameIsUnchanged() throws {
+        let original = Transcription(fileName: "Meeting recording", sourceType: .meeting)
+        try repo.save(original)
+        var completed = original
+        completed.fileName = "Generated topic"
+        completed.derivedTitle = completed.fileName
+        completed.status = .completed
+        let saved = try repo.savePreservingUserMetadata(completed, originalFileName: original.fileName)
+        XCTAssertEqual(saved.fileName, "Generated topic")
+        XCTAssertEqual(try repo.fetch(id: original.id)?.fileName, "Generated topic")
+    }
+
     func testFetchNonExistent() throws {
         let fetched = try repo.fetch(id: UUID())
         XCTAssertNil(fetched)
