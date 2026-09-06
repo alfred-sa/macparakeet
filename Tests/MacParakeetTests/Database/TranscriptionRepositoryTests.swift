@@ -34,13 +34,11 @@ final class TranscriptionRepositoryTests: XCTestCase {
         try MeetingTypeRepository(dbQueue: dbQueue).save(type)
         var original = Transcription(
             fileName: "Meeting", status: .completed, isFavorite: true,
-            sourceType: .meeting, meetingTypeId: type.id, userNotes: "Old notes",
-            titleOverride: "Old title"
+            sourceType: .meeting, meetingTypeId: type.id, userNotes: "Old notes"
         )
         try repo.save(original)
         try repo.updateUserNotes(id: original.id, userNotes: nil)
         try repo.updateMeetingType(id: original.id, meetingTypeId: nil)
-        try repo.updateTitleOverride(id: original.id, titleOverride: nil)
         try repo.updateFavorite(id: original.id, isFavorite: false)
         original.rawTranscript = "Replacement transcript"
         let saved = try repo.savePreservingUserMetadata(original, originalFileName: original.fileName)
@@ -48,10 +46,18 @@ final class TranscriptionRepositoryTests: XCTestCase {
         for snapshot in [saved, persisted] {
             XCTAssertNil(snapshot.userNotes)
             XCTAssertNil(snapshot.meetingTypeId)
-            XCTAssertNil(snapshot.titleOverride)
             XCTAssertFalse(snapshot.isFavorite)
             XCTAssertEqual(snapshot.rawTranscript, "Replacement transcript")
         }
+    }
+
+    func testCompletionMergePreservesClearedFileTitle() throws {
+        let original = Transcription(fileName: "interview.wav", titleOverride: "Old title")
+        try repo.save(original)
+        try repo.updateTitleOverride(id: original.id, titleOverride: nil)
+        let saved = try repo.savePreservingUserMetadata(original, originalFileName: original.fileName)
+        XCTAssertNil(saved.titleOverride)
+        XCTAssertNil(try repo.fetch(id: original.id)?.titleOverride)
     }
 
     func testCompletionMergeDoesNotMoveUpdatedAtBehindConcurrentEdit() throws {
