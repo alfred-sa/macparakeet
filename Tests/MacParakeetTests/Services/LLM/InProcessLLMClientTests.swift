@@ -26,9 +26,10 @@ final class InProcessLLMClientTests: XCTestCase {
         let response = try await client.chatCompletion(
             messages: [ChatMessage(role: .user, content: "Summarize.")],
             context: LLMExecutionContext(providerConfig: .inProcessLocal(model: "test-model")),
-            options: .default
+            options: ChatCompletionOptions(maxTokens: 2)
         )
 
+        XCTAssertNil(response.finishReason, "The runtime does not report whether the token limit caused completion")
         XCTAssertEqual(response.content, "hello local")
         XCTAssertEqual(response.model, "test-model")
         XCTAssertEqual(response.generationMetrics?.tokensPerSecond, 42)
@@ -303,7 +304,7 @@ final class InProcessLLMClientTests: XCTestCase {
             context: LLMExecutionContext(providerConfig: .inProcessLocal(model: "queued-test")),
             options: .default
         )
-        await Task.yield()
+        try await waitForQueuedGeneration(on: client, releasingOnFailure: firstGenerationGate)
         await firstGenerationGate.open()
 
         let firstResponse = try await first
@@ -353,7 +354,7 @@ final class InProcessLLMClientTests: XCTestCase {
             )
         }
 
-        await Task.yield()
+        try await waitForQueuedGeneration(on: client, releasingOnFailure: firstGenerationGate)
         let cancellationStart = Date()
         queuedTask.cancel()
 
@@ -379,7 +380,6 @@ final class InProcessLLMClientTests: XCTestCase {
         let firstGenerationGate = AsyncGate()
         let removalStartedGate = AsyncGate()
         let deleteGate = AsyncGate()
-        let queuedStartedGate = AsyncGate()
         let runtime = FakeLocalLLMRuntime(
             eventPlans: [
                 [.wait(firstGenerationGate), .text("first")],
@@ -419,18 +419,14 @@ final class InProcessLLMClientTests: XCTestCase {
         }
 
         let queuedTask = Task {
-            await queuedStartedGate.open()
-            return try await client.chatCompletion(
+            try await client.chatCompletion(
                 messages: [ChatMessage(role: .user, content: "Second")],
                 context: LLMExecutionContext(providerConfig: .inProcessLocal(model: "removal-queue-test")),
                 options: .default
             )
         }
 
-        try await withTimeout {
-            await queuedStartedGate.wait()
-        }
-        try await Task.sleep(nanoseconds: 10_000_000)
+        try await waitForQueuedGeneration(on: client, releasingOnFailure: deleteGate)
         let requestCountBeforeDelete = await runtime.requestCallCount()
         XCTAssertEqual(requestCountBeforeDelete, 1)
 
@@ -508,7 +504,7 @@ final class InProcessLLMClientTests: XCTestCase {
         }
         XCTAssertEqual(terminal.provider, "inProcessLocal")
         XCTAssertEqual(terminal.model, "stream-test")
-        XCTAssertEqual(terminal.stopReason, "stop")
+        XCTAssertNil(terminal.stopReason)
         XCTAssertEqual(terminal.effectiveSettings, settings)
     }
 
@@ -865,6 +861,25 @@ private struct CountWaiter {
     let id: UUID
     let count: Int
     let continuation: CheckedContinuation<Void, Never>
+}
+
+/// Observe the actual lease queue rather than assuming a task has run after a
+/// yield or sleep. Release the active operation on timeout so test cleanup can finish.
+private func waitForQueuedGeneration(
+    on client: InProcessLLMClient,
+    releasingOnFailure gate: AsyncGate
+) async throws {
+    do {
+        try await withTimeout(nanoseconds: 5_000_000_000) {
+            while await client.queuedGenerationCount == 0 {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
+        }
+    } catch {
+        await gate.open()
+        throw error
+    }
 }
 
 private enum TestTimeoutError: Error {

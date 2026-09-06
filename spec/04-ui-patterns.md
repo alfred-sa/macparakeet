@@ -120,7 +120,7 @@ States, all bound to the long-lived `MeetingRecordingPillViewModel` shared with 
 
 The tile body is informational. Only the visible Start and Stop capsules are real SwiftUI `Button`s, and both call the same `toggleRecording` path the menu bar uses. Completing, transcribing, completed, and error states render as inert status surfaces and must not expose button traits or no-op accessibility actions. The floating pill stays visible by default during recording so users who hide the main window keep an active control surface; users can hide it in Settings and continue controlling the live recording from the status menu, hotkey, or Meetings surfaces.
 
-### Library Meetings Filter
+### Library Layouts and Meeting States
 
 When list mode is selected, the view renders a date-grouped list (`Today` / `Yesterday` / `Previous 7 Days` / `Previous 30 Days` / `{Month Year}`) using `MeetingDateGroupHeader` + `MeetingRowCard`. Meeting rows surface saved-audio state directly (`Audio saved`, `Audio removed`, or `Audio missing`) so playback/retranscription expectations are visible before the user opens a menu.
 
@@ -196,7 +196,8 @@ Every saved meeting detail exposes a dedicated `Notes` tab immediately after
 is still processing. Notes are an editorial layer and never appear inside the
 factual transcript pane. The tab always shows an editable plaintext
 `TextEditor`, including when notes are empty, with Copy, word count, and the
-existing 8,000-word soft-cap warning.
+existing 7,500-word soft-cap warning. The separate 8,000-word cap bounds notes
+sent to prompt assembly; it does not truncate stored notes.
 
 Changes auto-save after a 500 ms idle debounce. A quiet status reports Saving,
 Saved, or a retryable failure; the editor stays writable during persistence.
@@ -207,6 +208,11 @@ canonical value. Database success remains authoritative even if the
 derived-artifact refresh reports a separate retryable warning. Successive
 saves use database last-writer-wins semantics, while artifact refresh remains
 ordered/latest-wins so stale completion cannot overwrite newer files.
+
+A notes-save error banner belongs to the selected meeting. Selecting another
+recording dismisses that banner while retaining the failed draft and its retry
+state in the notes coordinator. Same-meeting metadata refreshes and background
+saves for other meetings preserve the banner; unrelated diagnostics remain intact.
 
 ### Result Prompt Meeting-Notes Context
 
@@ -657,7 +663,7 @@ Floating panel opened from the meeting recording pill. Shows live notes, live tr
 - **Elapsed timer** — updates every second
 - **Dual audio level meters** — mic and system audio levels (visual feedback that both streams are capturing)
 - **Tabs** — Notes / Transcript / Ask, with ⌘1 / ⌘2 / ⌘3 shortcuts; Notes and Transcript are plain labels, Ask adds a streaming dot while `chatViewModel.isStreaming` and collapses that dot into the tooltip at narrow width
-- **Notes pane** — plaintext editor with slash commands, debounced auto-save through `MeetingRecordingService.updateNotes(_:)`, soft-cap warning near 8,000 words, and lock-file crash recovery
+- **Notes pane** — plaintext editor with slash commands, debounced auto-save through `MeetingRecordingService.updateNotes(_:)`, soft-cap warning at 7,500 words, and lock-file crash recovery
 - **Transcript pane** — scrolling live preview grouped into reading paragraphs, with one source label and timestamp per paragraph ([Me] = mic, [Them] = system audio); lag notice appears when preview chunks fall behind or are dropped
 - **Ask pane** — live chat against the rolling transcript using the configured LLM provider; follow-up state is handed off after finalization
 - **Stop button** — stops recording, triggers batch transcription, navigates to result
@@ -1173,6 +1179,11 @@ Button to re-run onboarding flow: "Run Onboarding Again..."
 
 A curated content feed displayed as a sidebar item with a full-page content view. Discover surfaces tips, quotes, affirmations, and sponsored items fetched from a remote JSON feed (`macparakeet.com/api/discover.json`) with local cache fallback and a bundled default. The feature is included by default; setting `MACPARAKEET_DISABLE_DISCOVER=1` at compile time excludes its code, resources, and UI.
 
+When Discover is compiled in, refresh starts at app launch, independently of
+page selection and the telemetry setting. There is no runtime visibility or
+network toggle. Cached and bundled content supports offline display; it does
+not disable the launch request.
+
 ### Sidebar Card
 
 When compiled in, the Discover item is **not** part of the regular sidebar `List`. It renders as a pinned card below the sidebar list via `.safeAreaInset(edge: .bottom)`. This keeps it visually distinct and always visible regardless of scroll position.
@@ -1273,6 +1284,10 @@ same CommonMark/GFM subset on every surface, including nested lists, static
 checked/unchecked task items, fenced code, and horizontally scrollable tables.
 The surrounding pane owns vertical scrolling; wide Markdown blocks must not
 expand the transcript detail or live-meeting panel.
+
+Each streaming renderer subscribes to a fresh snapshot stream and immediately
+receives the latest content. Closing or hiding a pane cancels only that
+subscription; returning to it must continue rendering new snapshots.
 
 Generated Markdown remains read-only and selectable. Task boxes communicate
 their checked state but are not controls. Headings and table cells preserve the

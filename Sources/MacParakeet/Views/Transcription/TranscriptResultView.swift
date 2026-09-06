@@ -99,6 +99,8 @@ final class TranscriptRichContextLoader {
     struct Request: Equatable, Sendable {
         let transcriptionID: UUID
         let contentRevision: UInt64
+        // nil identifies the automatic snapshot while persisted attribution is loading.
+        let speakerCorrectionRevision: Int?
         let mode: TranscriptAIContextMode
     }
 
@@ -132,11 +134,13 @@ final class TranscriptRichContextLoader {
         transcription: Transcription,
         mode: TranscriptAIContextMode,
         contentRevision: UInt64,
+        speakerCorrectionRevision: Int? = nil,
         isCurrent: @escaping @MainActor (Request) -> Bool = { _ in true }
     ) async -> Prepared? {
         let request = Request(
             transcriptionID: transcription.id,
             contentRevision: contentRevision,
+            speakerCorrectionRevision: speakerCorrectionRevision,
             mode: mode
         )
         if let cached, cached.request == request {
@@ -177,6 +181,7 @@ final class TranscriptRichContextLoader {
         transcription: Transcription,
         mode: TranscriptAIContextMode,
         contentRevision: UInt64,
+        speakerCorrectionRevision: Int? = nil,
         apply: @escaping @MainActor (Request, String) -> Void
     ) -> Task<Void, Never> {
         let applyID = UUID()
@@ -186,7 +191,8 @@ final class TranscriptRichContextLoader {
                 let prepared = await self.prepare(
                     transcription: transcription,
                     mode: mode,
-                    contentRevision: contentRevision
+                    contentRevision: contentRevision,
+                    speakerCorrectionRevision: speakerCorrectionRevision
                 ),
                 !Task.isCancelled,
                 self.latestScheduledApplyID == applyID
@@ -202,6 +208,7 @@ final class TranscriptRichContextLoader {
         transcription: Transcription,
         mode: TranscriptAIContextMode,
         contentRevision: UInt64,
+        speakerCorrectionRevision: Int? = nil,
         isCurrent: @escaping @MainActor (Request) -> Bool = { _ in true },
         onStale: @escaping @MainActor () -> Void,
         action: @escaping @MainActor (String) -> Void
@@ -220,6 +227,7 @@ final class TranscriptRichContextLoader {
                 transcription: transcription,
                 mode: mode,
                 contentRevision: contentRevision,
+                speakerCorrectionRevision: speakerCorrectionRevision,
                 isCurrent: isCurrent
             )
             guard !Task.isCancelled, self.latestPromptActionID == actionID else { return }
@@ -273,6 +281,7 @@ final class TranscriptNotesActionGate {
     func start(
         flush: @escaping @MainActor () async -> Bool,
         isCurrent: @escaping @MainActor () -> Bool,
+        onFailure: @escaping @MainActor () -> Void = {},
         action: @escaping @MainActor () async -> Void
     ) -> Task<Void, Never>? {
         guard !isRunning, isCurrent() else { return nil }
@@ -286,9 +295,14 @@ final class TranscriptNotesActionGate {
                     self.task = nil
                 }
             }
-            guard await flush(), !Task.isCancelled,
+            let saved = await flush()
+            guard !Task.isCancelled,
                 self.requestID == id, isCurrent()
             else { return }
+            guard saved else {
+                onFailure()
+                return
+            }
             await action()
         }
         self.task = task
@@ -498,6 +512,7 @@ struct TranscriptResultView: View {
     @State private var richContextLoader = TranscriptRichContextLoader()
     @State private var promptNotesActionGate = TranscriptNotesActionGate()
     @State private var chatNotesActionGate = TranscriptNotesActionGate()
+    @State private var navigationNotesActionGate = TranscriptNotesActionGate()
     @State private var autoScrollPaused = false
     @State private var scrollPauseTask: Task<Void, Never>?
     @State private var scrollMonitor: Any?
@@ -682,6 +697,7 @@ struct TranscriptResultView: View {
     }
 
     private func handleTranscriptionChange() {
+        navigationNotesActionGate.invalidate()
         promptNotesActionGate.invalidate()
         chatNotesActionGate.invalidate()
         richContextLoader.invalidate()
@@ -1302,7 +1318,10 @@ struct TranscriptResultView: View {
         let selectedID = activeTranscription.id
         let notesEditor = savedMeetingNotesViewModel
         promptNotesActionGate.start(
-            flush: { await notesEditor.flush() },
+            flush: {
+                guard await notesEditor.flush() else { return false }
+                return await viewModel.waitForCurrentSpeakerAttribution()
+            },
             isCurrent: {
                 viewModel.currentTranscription?.id == selectedID
                     && savedMeetingNotesViewModel === notesEditor
@@ -1318,8 +1337,10 @@ struct TranscriptResultView: View {
                 transcription: transcription,
                 mode: mode,
                 contentRevision: revision,
+                speakerCorrectionRevision: viewModel.speakerAttribution?.correctionRevision,
                 isCurrent: { request in
                     viewModel.currentTranscriptionRevision == request.contentRevision
+                        && viewModel.speakerAttribution?.correctionRevision == request.speakerCorrectionRevision
                         && viewModel.currentTranscription?.id == request.transcriptionID
                         && currentAIContextMode == request.mode
                 },
@@ -2727,8 +2748,7 @@ struct TranscriptResultView: View {
         .onTapGesture {
             guard viewModel.selectedTab != tab else { return }
             if case .notes = viewModel.selectedTab {
-                Task { @MainActor in
-                    guard await savedMeetingNotesViewModel.flush() else { return }
+                startMeetingNotesNavigation(isCurrent: { viewModel.selectedTab == .notes }) {
                     viewModel.selectedTab = tab
                 }
                 return
@@ -3925,10 +3945,7 @@ struct TranscriptResultView: View {
             isSpeakerEditing: editingSpeakers,
             isSpeakerActionDisabled: viewModel.isApplyingSpeakerCorrection,
             selectedSegmentIDs: speakerSelection.selectedIDs,
-            effectiveIsSegmentActive: { segmentID in
-                guard let segment = attribution?.editableSegments.first(where: { $0.id == segmentID }) else {
-                    return false
-                }
+            effectiveIsSegmentActive: { segment in
                 let currentMs = playerViewModel.currentTimeMs
                 return playerViewModel.playbackMode != .none
                     && currentMs > 0
@@ -4149,6 +4166,7 @@ struct TranscriptResultView: View {
         let colorMap = cachedSpeakerColorMap.isEmpty ? buildSpeakerColorMap() : cachedSpeakerColorMap
         let speakerStats = viewModel.speakerAttribution?.statistics
             ?? cachedSpeakerStats
+        let mutationsDisabled = viewModel.speakerAttribution == nil || viewModel.isApplyingSpeakerCorrection
 
         VStack(alignment: .leading, spacing: DesignSystem.Spacing.md) {
             Button {
@@ -4196,7 +4214,7 @@ struct TranscriptResultView: View {
                         Label("Add speaker", systemImage: "plus")
                     }
                     .parakeetAction(.secondary)
-                    .disabled(viewModel.isApplyingSpeakerCorrection)
+                    .disabled(mutationsDisabled)
                 }
                 ForEach(speakers, id: \.id) { speaker in
                     let stats = speakerStats[speaker.id]
@@ -4211,6 +4229,8 @@ struct TranscriptResultView: View {
                                 color: colorMap[speaker.id] ?? DesignSystem.Colors.textSecondary,
                                 contextID: SpeakerRenameAccessibility.overviewRenameContextIdentifier(for: speaker.id)
                             )
+                            .disabled(mutationsDisabled)
+                            .allowsHitTesting(!mutationsDisabled)
 
                             if let stats {
                                 HStack(spacing: DesignSystem.Spacing.sm) {
@@ -4284,6 +4304,7 @@ struct TranscriptResultView: View {
                         .menuStyle(.borderlessButton)
                         .fixedSize()
                         .accessibilityLabel("Actions for \(speaker.label)")
+                        .disabled(mutationsDisabled)
                     }
                     .padding(DesignSystem.Spacing.md)
                     .background(
@@ -4404,6 +4425,7 @@ struct TranscriptResultView: View {
     // MARK: - Segment Cache
 
     private func handleDisappear() {
+        navigationNotesActionGate.invalidate()
         promptNotesActionGate.invalidate()
         chatNotesActionGate.invalidate()
         richContextLoader.invalidate()
@@ -4428,9 +4450,12 @@ struct TranscriptResultView: View {
         richContextLoader.schedule(
             transcription: transcription,
             mode: mode,
-            contentRevision: revision
+            contentRevision: revision,
+            speakerCorrectionRevision: viewModel.speakerAttribution?.correctionRevision
         ) { request, text in
-            guard viewModel.currentTranscriptionRevision == request.contentRevision else { return }
+            guard viewModel.currentTranscriptionRevision == request.contentRevision,
+                  viewModel.speakerAttribution?.correctionRevision == request.speakerCorrectionRevision
+            else { return }
             guard (viewModel.currentTranscription?.id ?? transcription.id) == request.transcriptionID else {
                 return
             }
@@ -4584,21 +4609,31 @@ struct TranscriptResultView: View {
     }
 
     private func requestMeetingNotesNavigation(_ action: MeetingNotesNavigationAction) {
-        Task { @MainActor in
-            guard await savedMeetingNotesViewModel.flush() else {
-                viewModel.selectedTab = .notes
-                return
-            }
-            performMeetingNotesNavigation(action)
+        let navigate: (() -> Void)?
+        switch action {
+        case .navigateBack: navigate = onBack
+        case .startNewTranscription: navigate = onStartNew
         }
+        startMeetingNotesNavigation { navigate?() }
     }
 
-    private func performMeetingNotesNavigation(_ action: MeetingNotesNavigationAction) {
-        switch action {
-        case .navigateBack:
-            onBack?()
-        case .startNewTranscription:
-            onStartNew?()
+    private func startMeetingNotesNavigation(
+        isCurrent: @escaping @MainActor () -> Bool = { true },
+        action: @escaping @MainActor () -> Void
+    ) {
+        let selectedID = activeTranscription.id
+        let notesEditor = savedMeetingNotesViewModel
+        navigationNotesActionGate.start(
+            flush: { await notesEditor.flush() },
+            isCurrent: {
+                transcription.id == selectedID
+                    && viewModel.currentTranscription?.id == selectedID
+                    && savedMeetingNotesViewModel === notesEditor
+                    && isCurrent()
+            },
+            onFailure: { viewModel.selectedTab = .notes }
+        ) {
+            action()
         }
     }
 

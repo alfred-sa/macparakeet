@@ -79,6 +79,11 @@ with human progress/status kept off stdout.
   prompt/completion/total token totals, explicit `estimatedCostUSD: null`, and
   per-recording failures. Human progress remains on stderr. Any failed item
   makes the command exit `1` after emitting the aggregate report.
+  Token accumulators that overflow remain `null` for the rest of the batch;
+  later receipts cannot restart a misleading partial total. An individual
+  receipt whose component sum overflowed also makes the batch total unknown.
+  An explicit receipt total takes precedence; when it is absent and both
+  component counts exist, their checked sum contributes to the batch total.
   For `--stale`, `selected` is the prefiltered missing/stale subset, not every
   completed transcription. Successful backfills also rebuild `cards_fts`.
 - `--envelope` success output uses `{ ok, command, data, meta }` and does not
@@ -102,9 +107,7 @@ with human progress/status kept off stdout.
   `prompts set <prompt>` enables it and `--no-include-meeting-notes` disables
   it; the flags are mutually exclusive and rejected for Transform prompts.
   Explicit `{{userNotes}}` custom-template substitution remains
-  independent of this preference. This additive surface was implemented and
-  locally verified on 2026-09-05; release availability follows the normal
-  channel process.
+  independent of this preference.
 - Version-aware prompt JSON adds `activeVersionId`, `activeVersionNumber`, optional `modelOverride`,
   optional canonical provenance, and optional
   deletion metadata without removing existing prompt fields. `prompts history
@@ -118,6 +121,18 @@ with human progress/status kept off stdout.
   affected prompt object; restore creates a new version and never rewrites an
   old one. The new version's `createdAt` and the prompt's `updatedAt` record
   the restoration time.
+- `prompts set --label LABEL --available|--unavailable` updates one active
+  label rule. `--all-labels` updates only the fallback for transcriptions with
+  no matching explicit label rule, across all sources; it preserves label
+  exceptions. Adding the first label rule preserves the previous implicit
+  available fallback; use `--all-labels --unavailable` to restrict unmatched
+  transcriptions. `--json` returns the saved label policy (`id`, `promptId`,
+  `scopeKind`, optional `labelId`, `isAvailable`, `createdAt`, `updatedAt`).
+  Availability is independent of auto-run: configure automatic execution
+  separately with `--source SOURCE --auto-run|--no-auto-run`. The obsolete
+  fork flags `--meeting-type` and `--all-meeting-types` fail with replacement
+  guidance because their former type-scoped semantics cannot be represented
+  faithfully by label availability. They never write inactive legacy policies.
 - `prompts run` checks label availability before provider execution for every
   transcription source, using the same rules as the app. No label targets means
   available everywhere; when targeted, at least one transcription label must
@@ -135,6 +150,14 @@ with human progress/status kept off stdout.
   effective receipt is available; callers must not reinterpret it as raw
   upstream-provider defaults. Other LLM commands omit it because per-prompt
   settings do not apply to them.
+- LLM receipts never infer a normal `stopReason` when the runtime supplies no
+  finish reason. Local CLI omits `effectiveSettings`, because inference options
+  are not passed to its command. Token usage may derive `totalTokens` from both
+  component counts when the provider omits the total. A missing component or
+  arithmetic overflow leaves the derived total unknown; available components
+  remain unchanged. Explicit streaming
+  provider errors fail the operation even after partial text; they do not
+  produce a successful result receipt.
 - `meetings results list|add --json` prompt-result objects include additive
   optional `inferenceSettingsSnapshot` with the same settings shape. When
   present it is the effective receipt stored with the result; imported results
@@ -144,7 +167,6 @@ with human progress/status kept off stdout.
   that generation. `false` covers migrated and externally imported results.
   Nullable `userNotesSnapshot` contains the exact normalized, bounded notes
   value supplied to prompt assembly, not necessarily the full canonical note.
-  This field has the same pending-validation status as the CLI flags above.
 - Prompt-result objects may additionally include nullable `promptId`,
   `promptVersionId`, `providerSnapshot`, and `modelSnapshot`. Library-driven
   CLI/app generation populates those execution receipts. Historical and

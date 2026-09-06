@@ -187,7 +187,20 @@ Skip diarization for: dictation (single speaker by design), or when the correspo
 > cursor; failed retranscription leaves the prior transcript and corrections
 > intact. Attribution reads are scoped to the selected transcript snapshot,
 > including same-ID completion and refresh; older asynchronous reads cannot
-> replace a newer snapshot. Explicitly unassigned words remain separate from
+> replace a newer snapshot. Rich AI context caches include both the selected
+> transcript revision and speaker-correction revision, including the transition
+> from loading to resolved attribution. A correction during context preparation
+> invalidates that request before submission. After saving notes, AI actions
+> await the corresponding attribution read before preparing context. Automatic
+> nil word assignments inherit the preceding speaker, matching the original
+> segmenter; explicit Unassigned corrections stay independent. Chunked cards
+> retain the complete logical turn for speaker actions. Notes, meeting rename,
+> and speaker edits serialize their artifact refreshes per meeting and reread
+> canonical data after earlier writes complete. Search derivation version 4
+> rebuilds inherited speaker runs and excludes blank edge tokens from citation
+> timestamps. CLI prompt input uses the shared rich renderer, and TXT stdout
+> uses the same speaker-aware renderer as file export. Explicitly unassigned words remain
+> separate from
 > named speakers in TXT/Markdown exports and appear under an Unassigned label
 > when the transcript has named speakers. See
 > `plans/active/2026-09-05-speaker-attribution-editing.md` and

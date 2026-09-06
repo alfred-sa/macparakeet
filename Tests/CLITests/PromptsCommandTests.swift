@@ -64,14 +64,14 @@ final class PromptsCommandTests: XCTestCase {
         )
     }
 
-    func testSetAcceptsModelAndMeetingPolicies() throws {
+    func testSetAcceptsModelAndLabelPolicies() throws {
         let model = try PromptsCommand.SetSubcommand.parse(["Prompt", "--model", "qwen-local"])
         XCTAssertEqual(model.model, "qwen-local")
         XCTAssertNoThrow(try PromptsCommand.SetSubcommand.parse(["Prompt", "--active-model"]))
         let policy = try PromptsCommand.SetSubcommand.parse([
-            "Prompt", "--meeting-type", "Customer", "--available", "--auto-run",
+            "Prompt", "--label", "Customer", "--available",
         ])
-        XCTAssertEqual(policy.meetingType, "Customer")
+        XCTAssertEqual(policy.label, "Customer")
         XCTAssertTrue(policy.available)
         XCTAssertNoThrow(try PromptsCommand.SetSubcommand.parse([
             "Polish", "--temperature", "0.3", "--thinking-mode", "enabled",
@@ -191,26 +191,125 @@ final class PromptsCommandTests: XCTestCase {
         XCTAssertEqual(versions.compactMap { $0["versionNumber"] as? Int }, [2, 1])
     }
 
-    func testNoAutoRunPreservesUnavailableMeetingPolicy() throws {
+    func testObsoleteMeetingPoliciesFailWithMigrationGuidance() {
+        for target in [["--all-meeting-types"], ["--meeting-type", "Customer"]] {
+            XCTAssertThrowsError(try PromptsCommand.SetSubcommand.parse(
+                ["Prompt"] + target + ["--unavailable"]
+            )) { error in
+                XCTAssertTrue(String(describing: error).contains("--label"))
+                XCTAssertTrue(String(describing: error).contains("--source meeting"))
+            }
+        }
+        XCTAssertThrowsError(try PromptsCommand.SetSubcommand.parse([
+            "Prompt", "--label", "Customer", "--available", "--auto-run",
+        ]))
+    }
+
+    func testFirstLabelDenialPreservesOtherTranscriptions() async throws {
+        let databaseURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("prompt-first-policy-cli-\(UUID().uuidString).db")
+        defer { try? FileManager.default.removeItem(at: databaseURL) }
+        let database = try DatabaseManager(path: databaseURL.path)
+        let prompt = try PromptEditingService(dbQueue: database.dbQueue).create(
+            Prompt(name: "First exception", content: "Summarize.")
+        )
+        let label = MeetingLabel(name: "Excluded")
+        try MeetingLabelRepository(dbQueue: database.dbQueue).save(label)
+        let setter = try PromptsCommand.SetSubcommand.parse([
+            prompt.id.uuidString, "--label", label.id.uuidString, "--unavailable",
+            "--database", databaseURL.path,
+        ])
+        try setter.run()
+        for excluded in [false, true] {
+            let transcript = Transcription(fileName: "Exception", rawTranscript: "Source text", status: .completed)
+            try TranscriptionRepository(dbQueue: database.dbQueue).save(transcript)
+            if excluded {
+                try TranscriptionMeetingLabelRepository(dbQueue: database.dbQueue).add(labelId: label.id, to: transcript.id)
+            }
+            let runner = try PromptsCommand.RunSubcommand.parse([
+                prompt.id.uuidString, "--transcription", transcript.id.uuidString,
+                "--provider", "cli", "--command", "/usr/bin/printf other-labels-preserved",
+                "--database", databaseURL.path,
+            ])
+            if excluded {
+                do {
+                    try await runner.run()
+                    XCTFail("The explicitly excluded label must not run")
+                } catch {
+                    XCTAssertTrue(error.localizedDescription.contains("is unavailable"), "\(error)")
+                }
+            } else {
+                try await runner.run()
+                let results = try PromptResultRepository(dbQueue: database.dbQueue).fetchAll(transcriptionId: transcript.id)
+                XCTAssertEqual(results.first?.content, "other-labels-preserved")
+            }
+        }
+    }
+
+    func testLabelPolicyMutationsControlExecutionAndPreserveExplicitExceptions() async throws {
         let databaseURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("prompt-policy-cli-\(UUID().uuidString).db")
         defer { try? FileManager.default.removeItem(at: databaseURL) }
         let database = try DatabaseManager(path: databaseURL.path)
         let prompt = try PromptEditingService(dbQueue: database.dbQueue).create(
-            Prompt(name: "Unavailable policy", content: "Summarize.")
+            Prompt(name: "CLI targeted", content: "Summarize.", isAutoRun: true, appliesToSources: [.meeting])
         )
-        let policies = PromptMeetingPolicyRepository(dbQueue: database.dbQueue)
-        _ = try policies.setAllMeetingsPolicy(
-            promptId: prompt.id, isAvailable: false, isAutoRun: false, sortOrder: nil
-        )
-        let command = try PromptsCommand.SetSubcommand.parse([
-            prompt.id.uuidString, "--all-meeting-types", "--no-auto-run",
-            "--database", databaseURL.path,
-        ])
-        try command.run()
-        let policy = try XCTUnwrap(try policies.fetchEffectivePolicy(promptId: prompt.id, meetingTypeId: nil))
-        XCTAssertFalse(policy.isAvailable)
-        XCTAssertFalse(policy.isAutoRun)
+        let target = MeetingLabel(name: "Allowed label")
+        try MeetingLabelRepository(dbQueue: database.dbQueue).save(target)
+        for flags in [["--all-labels", "--unavailable"], ["--label", target.id.uuidString, "--available"]] {
+            let command = try PromptsCommand.SetSubcommand.parse(
+                [prompt.id.uuidString] + flags + ["--json", "--database", databaseURL.path]
+            )
+            let output = try captureStandardOutput { try command.run() }
+            let record = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any])
+            XCTAssertEqual(record["scopeKind"] as? String, flags[0] == "--all-labels" ? "all" : "label")
+        }
+        let savedPrompt = try XCTUnwrap(PromptRepository(dbQueue: database.dbQueue).fetch(id: prompt.id))
+        XCTAssertTrue(savedPrompt.autoRuns(for: .meeting))
+        XCTAssertFalse(savedPrompt.autoRuns(for: .file))
+        for source in Transcription.SourceType.allCases {
+            for hasTarget in [false, true] {
+                let transcript = Transcription(
+                    fileName: "CLI policy", rawTranscript: "Source text", status: .completed, sourceType: source
+                )
+                try TranscriptionRepository(dbQueue: database.dbQueue).save(transcript)
+                if hasTarget {
+                    try TranscriptionMeetingLabelRepository(dbQueue: database.dbQueue)
+                        .add(labelId: target.id, to: transcript.id)
+                }
+                let command = try PromptsCommand.RunSubcommand.parse([
+                    prompt.id.uuidString, "--transcription", transcript.id.uuidString,
+                    "--provider", "cli", "--command", "/usr/bin/printf policy-accepted",
+                    "--database", databaseURL.path,
+                ])
+                if hasTarget {
+                    try await command.run()
+                    let results = try PromptResultRepository(dbQueue: database.dbQueue).fetchAll(transcriptionId: transcript.id)
+                    XCTAssertEqual(results.first?.content, "policy-accepted")
+                } else {
+                    do {
+                        try await command.run()
+                        XCTFail("Expected unavailable fallback for \(source)")
+                    } catch {
+                        XCTAssertTrue(error.localizedDescription.contains("is unavailable"), "\(error)")
+                    }
+                }
+            }
+        }
+        // Updating the fallback must not erase an explicit denial.
+        for flags in [["--label", target.id.uuidString, "--unavailable"], ["--all-labels", "--available"]] {
+            let command = try PromptsCommand.SetSubcommand.parse(
+                [prompt.id.uuidString] + flags + ["--database", databaseURL.path]
+            )
+            try command.run()
+        }
+        let policies = try PromptLabelPolicyRepository(dbQueue: database.dbQueue).fetchPolicies(promptId: prompt.id)
+        XCTAssertFalse(PromptLabelApplicabilityResolver.resolve(
+            prompt: savedPrompt, sourceType: .meeting, transcriptionLabelIDs: [target.id], policies: policies
+        ).isAvailable)
+        XCTAssertTrue(PromptLabelApplicabilityResolver.resolve(
+            prompt: savedPrompt, sourceType: .file, transcriptionLabelIDs: [], policies: policies
+        ).isAvailable)
     }
 
     func testRunRejectsNonmatchingLabelForEverySourceBeforeProviderExecution() async throws {
@@ -589,6 +688,68 @@ final class PromptsCommandTests: XCTestCase {
             JSONSerialization.jsonObject(with: Data(output.utf8)) as? [String: Any]
         )
         XCTAssertEqual(payload["includeMeetingNotes"] as? Bool, true)
+    }
+
+    func testMeetingNotesLookupPrefersResultsWithoutLosingExactUUIDIdentity() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notes-lookup-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let databasePath = directory.appendingPathComponent("test.db").path
+        let manager = try DatabaseManager(path: databasePath)
+        let repository = PromptRepository(dbQueue: manager.dbQueue)
+        let result = Prompt(
+            id: UUID(uuidString: "CCDDEEFF-1111-1111-1111-111111111111")!,
+            name: "Result prefix target", content: "Result"
+        )
+        let transform = Prompt(
+            id: UUID(uuidString: "CCDDEEFF-2222-2222-2222-222222222222")!,
+            name: "Transform prefix target", content: "Transform", category: .transform
+        )
+        try repository.save(result)
+        try repository.save(transform)
+        for flag in ["--include-meeting-notes", "--no-include-meeting-notes"] {
+            let command = try PromptsCommand.SetSubcommand.parse([
+                "CCDDEEFF", flag, "--database", databasePath,
+            ])
+            try command.run()
+            XCTAssertEqual(try repository.fetch(id: result.id)?.includeMeetingNotes, flag == "--include-meeting-notes")
+            XCTAssertEqual(try repository.fetch(id: transform.id)?.includeMeetingNotes, false)
+        }
+
+        // A result name that resembles only a transform's prefix still
+        // resolves as a name within the result-specific notes operation.
+        let namedResult = Prompt(name: "CCDDEEFF-2222", content: "Named result")
+        try repository.save(namedResult)
+        let namedCommand = try PromptsCommand.SetSubcommand.parse([
+            namedResult.name, "--include-meeting-notes", "--database", databasePath,
+        ])
+        try namedCommand.run()
+        XCTAssertEqual(try repository.fetch(id: namedResult.id)?.includeMeetingNotes, true)
+
+        // Exact UUID precedence must still reject a transform, rather than
+        // modifying a result with a display name equal to that UUID.
+        let uuidNamedResult = Prompt(name: transform.id.uuidString, content: "UUID display name")
+        try repository.save(uuidNamedResult)
+        let exactCommand = try PromptsCommand.SetSubcommand.parse([
+            transform.id.uuidString, "--include-meeting-notes", "--database", databasePath,
+        ])
+        XCTAssertThrowsError(try exactCommand.run()) { error in
+            XCTAssertTrue(String(describing: error).contains("only available for result prompts"))
+        }
+        XCTAssertEqual(try repository.fetch(id: uuidNamedResult.id)?.includeMeetingNotes, false)
+
+        // Ambiguity among results must not fall through to wider lookup.
+        try repository.save(Prompt(
+            id: UUID(uuidString: "CCDDEEFF-3333-3333-3333-333333333333")!,
+            name: "Second result", content: "Result"
+        ))
+        let ambiguous = try PromptsCommand.SetSubcommand.parse([
+            "CCDDEEFF", "--include-meeting-notes", "--database", databasePath,
+        ])
+        XCTAssertThrowsError(try ambiguous.run()) { error in
+            guard case CLILookupError.ambiguous = error else { return XCTFail("Unexpected error: \(error)") }
+        }
     }
 
     func testSetMeetingNotesFlagRejectsTransformPrompt() throws {

@@ -39,8 +39,8 @@ struct MarkdownContentView: View {
                     listener: MarkdownContentInteractionListener.shared
                 )
                 .onAppear {
-                    // AsyncStream does not replay consumed values when this
-                    // view returns to streaming after a completed render.
+                    // Refresh the retained source after hidden/static content
+                    // changes; every renderer subscription replays its latest value.
                     streamingSource.send(content)
                 }
                 .onChange(of: content) { _, newContent in
@@ -73,28 +73,53 @@ struct MarkdownContentView: View {
     }
 }
 
-final class MarkdownSnapshotSource: ObservableObject, StreamedMarkdownSource {
-    let text: AsyncStream<String>
-    private let continuation: AsyncStream<String>.Continuation
+/// A retained snapshot store, with a separate stream for each renderer task.
+/// Cancelling a consumer terminates its AsyncStream permanently, so the source
+/// must create a fresh subscription when the same SwiftUI view reappears.
+final class MarkdownSnapshotSource: ObservableObject, StreamedMarkdownSource, @unchecked Sendable {
+    // The renderer subscribes/cancels from tasks while SwiftUI sends snapshots.
+    // All mutable state, including replay ordering, is protected by this lock.
+    private let lock = NSLock()
+    private var latestContent: String
+    private var subscribers: [UUID: AsyncStream<String>.Continuation] = [:]
 
     init(initialContent: String) {
-        var capturedContinuation: AsyncStream<String>.Continuation?
-        self.text = AsyncStream(bufferingPolicy: .bufferingNewest(1)) {
-            capturedContinuation = $0
+        self.latestContent = initialContent
+    }
+
+    var text: AsyncStream<String> {
+        let subscriptionID = UUID()
+        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+            lock.withLock {
+                subscribers[subscriptionID] = continuation
+                continuation.yield(latestContent)
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.removeSubscriber(subscriptionID)
+            }
         }
-        guard let capturedContinuation else {
-            fatalError("AsyncStream must synchronously provide its continuation")
-        }
-        self.continuation = capturedContinuation
-        self.continuation.yield(initialContent)
     }
 
     func send(_ content: String) {
-        continuation.yield(content)
+        lock.withLock {
+            latestContent = content
+            for continuation in subscribers.values {
+                continuation.yield(content)
+            }
+        }
+    }
+
+    private func removeSubscriber(_ id: UUID) {
+        lock.withLock {
+            _ = subscribers.removeValue(forKey: id)
+        }
     }
 
     deinit {
-        continuation.finish()
+        // No strong reference to the source survives into termination handlers.
+        for continuation in subscribers.values {
+            continuation.finish()
+        }
     }
 }
 
@@ -197,6 +222,15 @@ enum MarkdownContentConfiguration {
     }
 }
 
+/// Writes the unchanged Markdown source without blocking the UI actor.
+enum MarkdownTableExporter {
+    static func write(_ content: String, to destination: URL) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            try content.write(to: destination, atomically: true, encoding: .utf8)
+        }.value
+    }
+}
+
 private final class MarkdownContentInteractionListener: MarkdownListener {
     static let shared = MarkdownContentInteractionListener()
 
@@ -210,13 +244,26 @@ private final class MarkdownContentInteractionListener: MarkdownListener {
     }
 
     func onTableDownloadTap(content: String) async {
-        await MainActor.run {
+        let destination = await MainActor.run { () -> URL? in
             let panel = NSSavePanel()
             panel.title = "Export Markdown table"
             panel.nameFieldStringValue = "table.md"
             panel.allowedContentTypes = [.plainText]
-            guard panel.runModal() == .OK, let url = panel.url else { return }
-            try? content.write(to: url, atomically: true, encoding: .utf8)
+            guard panel.runModal() == .OK else { return nil }
+            return panel.url
+        }
+        guard let destination else { return }
+        do {
+            try await MarkdownTableExporter.write(content, to: destination)
+        } catch {
+            await MainActor.run {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Export Failed"
+                alert.informativeText = error.localizedDescription
+                alert.addButton(withTitle: "OK")
+                alert.runModal()
+            }
         }
     }
 

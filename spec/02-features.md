@@ -460,6 +460,14 @@ equivalent one-based `transcribe --audio-track N` flag for local files/folders,
 where it applies explicitly to every expanded file; URL and podcast lanes
 reject the flag.
 
+**Metadata during retranscription:** Saving notes, changing or clearing the
+meeting type, renaming a meeting, changing its favorite/title override, and
+updating legacy chat while STT is running must survive completion. The final
+transaction preserves the latest user metadata and returns the committed row
+for GUI publication and derived artifacts; it does not restore the metadata
+snapshot taken when the job started. Retranscription still replaces the speech
+output, engine attribution, and derived search content.
+
 **Apple Podcasts URL transcription:** Pasting an Apple Podcasts link
 (`podcasts.apple.com/.../id<show>?i=<episode>`) resolves the episode through
 the public iTunes lookup API to its audio enclosure URL plus episode title,
@@ -1761,7 +1769,10 @@ fields.
 - [x] Queue, retry, regenerate, and saved-result snapshots remain reproducible.
 - [x] Focused tests pass.
 - [ ] Manual end-to-end app verification is still required before release.
-- [x] The final full Swift suite passes.
+- [ ] Current integrated full-suite validation is not green: the 2026-09-06
+  audit recorded one long-transcript layout-settling failure. Its isolated
+  eight-test rerun and the subsequent focused correction suites passed; the
+  full suite was not repeated under the once-per-task rule.
 
 ### F38: Slash Commands in Notes
 

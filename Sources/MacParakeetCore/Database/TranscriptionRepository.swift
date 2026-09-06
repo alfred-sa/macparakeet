@@ -1,12 +1,22 @@
 import Foundation
 import GRDB
 
+public enum TranscriptionCompletionError: Error, Equatable, LocalizedError {
+    case recordingDeleted
+
+    public var errorDescription: String? {
+        "This recording was deleted before transcription completed."
+    }
+}
+
 public protocol TranscriptionRepositoryProtocol: Sendable {
     func save(_ transcription: Transcription) throws
     /// Persists a meeting transcription completed from a potentially stale
     /// pre-STT snapshot while retaining classification changed during the
     /// long-running transcription work.
     func savePreservingMeetingClassification(_ transcription: Transcription) throws
+    /// Merge current user-owned metadata and return the row from the same write transaction.
+    func savePreservingUserMetadata(_ transcription: Transcription, originalFileName: String) throws -> Transcription
     func fetch(id: UUID) throws -> Transcription?
     func fetchAll(limit: Int?) throws -> [Transcription]
     func fetchLibraryPage(query: TranscriptionLibraryQuery) throws -> TranscriptionLibraryPage
@@ -196,14 +206,21 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     }
 
     public func savePreservingMeetingClassification(_ transcription: Transcription) throws {
+        _ = try savePreservingUserMetadata(transcription, originalFileName: transcription.fileName)
+    }
+
+    public func savePreservingUserMetadata(
+        _ transcription: Transcription, originalFileName: String
+    ) throws -> Transcription {
         try dbQueue.write { db in
-            var merged = transcription
-            if transcription.sourceType == .meeting,
-                let current = try Transcription.fetchOne(db, key: transcription.id)
-            {
-                merged.meetingTypeId = current.meetingTypeId
+            guard let current = try Transcription.fetchOne(db, key: transcription.id) else {
+                throw TranscriptionCompletionError.recordingDeleted
             }
+            let merged = transcription.preservingUserMetadata(
+                from: current, originalFileName: originalFileName
+            )
             try merged.save(db)
+            return merged
         }
     }
 
@@ -594,7 +611,7 @@ public final class TranscriptionRepository: TranscriptionRepositoryProtocol, @un
     public func updateMeetingType(id: UUID, meetingTypeId: UUID?) throws {
         try dbQueue.write { db in
             guard var transcription = try Transcription.fetchOne(db, key: id),
-                  transcription.sourceType == .meeting
+                transcription.sourceType == .meeting
             else { return }
             guard transcription.meetingTypeId != meetingTypeId else { return }
             transcription.meetingTypeId = meetingTypeId
@@ -770,4 +787,28 @@ private func transcriptionMatchesLibrarySearch(
         || (transcription.rawTranscript.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
         || (transcription.cleanTranscript.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
         || (transcription.channelName.map { UnicodeSearch.contains($0, normalizedQuery: normalizedQuery) } ?? false)
+}
+
+private extension Transcription {
+    /// STT owns transcript output, not metadata edited while processing is suspended.
+    func preservingUserMetadata(from current: Transcription, originalFileName: String) -> Transcription {
+        var merged = self
+        merged.updatedAt = max(updatedAt, current.updatedAt)
+        merged.userNotes = current.userNotes
+        merged.meetingTypeId = current.meetingTypeId
+        merged.isFavorite = current.isFavorite
+        merged.titleOverride = current.titleOverride
+        merged.chatMessages = current.chatMessages
+        merged.meetingArtifactFolderPath = current.meetingArtifactFolderPath
+        merged.filePath = current.filePath
+        // Allow an automatically generated meeting title only if the user has
+        // not renamed the row since the processing snapshot was captured.
+        if current.fileName != originalFileName {
+            merged.fileName = current.fileName
+            if current.sourceType == .meeting {
+                merged.derivedTitle = current.derivedTitle
+            }
+        }
+        return merged
+    }
 }

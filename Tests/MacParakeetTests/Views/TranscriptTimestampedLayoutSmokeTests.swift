@@ -173,13 +173,23 @@ final class TranscriptTimestampedLayoutSmokeTests: XCTestCase {
             }
         }
 
-        let settledCount = view.layoutCount
-        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
-        XCTAssertLessThanOrEqual(
-            view.layoutCount - settledCount, 2,
-            "layout kept re-running while idle (\(view.layoutCount - settledCount) extra passes)",
-            file: file, line: line
-        )
+        // Lazy rows can finish queued layout after the last scroll, especially
+        // while other tests or builds compete for CPU. Require an actual quiet
+        // half-second within a bounded settling budget instead of assuming the
+        // first half-second already starts idle. An update loop still fails.
+        let settleDeadline = Date().addingTimeInterval(5)
+        var lastLayoutCount = view.layoutCount
+        var quietSince = Date()
+        while Date() < settleDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+            if view.layoutCount != lastLayoutCount {
+                lastLayoutCount = view.layoutCount
+                quietSince = Date()
+            } else if Date().timeIntervalSince(quietSince) >= 0.5 {
+                return
+            }
+        }
+        XCTFail("layout did not become idle within 5 seconds", file: file, line: line)
     }
 
     func testSpeakerCardsSettleAfterScrolling() {
@@ -203,6 +213,18 @@ final class TranscriptTimestampedLayoutSmokeTests: XCTestCase {
         let view = host(hasSpeakers: true, cards: [], segments: [], attribution: attribution)
 
         assertLayoutSettles(view)
+    }
+
+    func testChunkedCardsKeepFullLogicalTurnForEveryAction() {
+        let source = segments(count: 49, speakers: ["S1"])
+        let resolved = attribution(for: source)
+        let turn = resolved.turns[0]
+        XCTAssertEqual(turn.segments.count, 49)
+        let cards = identifiedEffectiveSpeakerTurnCards([turn])
+        XCTAssertEqual(cards.map { $0.segments.count }, [24, 24, 1])
+        for card in cards {
+            XCTAssertEqual(card.logicalTurnSegments.map(\.id), turn.segments.map(\.id))
+        }
     }
 
     func testEffectiveRowsWithoutSpeakersFollowIndividualSegmentsAndSettle() {

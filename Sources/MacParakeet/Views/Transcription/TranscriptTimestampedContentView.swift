@@ -119,6 +119,7 @@ struct IdentifiedEffectiveSpeakerTurn: Identifiable {
     let assignment: SpeakerAssignment
     let speakerLabel: String
     let segments: [SpeakerEditableSegment]
+    let logicalTurnSegments: [SpeakerEditableSegment]
 }
 
 func identifiedEffectiveSpeakerTurnCards(
@@ -133,7 +134,8 @@ func identifiedEffectiveSpeakerTurnCards(
                 id: segments[0].id,
                 assignment: turn.assignment,
                 speakerLabel: turn.speakerLabel,
-                segments: segments
+                segments: segments,
+                logicalTurnSegments: turn.segments
             )
         }
     }
@@ -219,7 +221,7 @@ struct TranscriptTimestampedContentView<SpeakerLabelContent: View>: View {
     var isSpeakerEditing = false
     var isSpeakerActionDisabled = false
     var selectedSegmentIDs: Set<SpeakerEditableSegmentID> = []
-    var effectiveIsSegmentActive: (SpeakerEditableSegmentID) -> Bool = { _ in false }
+    var effectiveIsSegmentActive: (SpeakerEditableSegment) -> Bool = { _ in false }
     var effectiveHighlightRanges: [SpeakerEditableSegmentID: [NSRange]] = [:]
     var effectiveCurrentHighlight: (id: SpeakerEditableSegmentID, range: NSRange)? = nil
     var onSelectSegment: (SpeakerEditableSegmentID) -> Void = { _ in }
@@ -368,7 +370,7 @@ struct TranscriptTimestampedContentView<SpeakerLabelContent: View>: View {
                 startMs: segment.startMs,
                 text: segment.text,
                 timestampText: timestampLabel(segment.startMs),
-                isActive: effectiveIsSegmentActive(segment.id),
+                isActive: effectiveIsSegmentActive(segment),
                 isSeekable: isTimestampSeekable,
                 bodyFont: bodyFont,
                 showRowBackground: true,
@@ -444,7 +446,7 @@ private struct EditableTranscriptTurnCardView<SpeakerLabelContent: View>: View {
     }
 
     private var segmentIDs: [SpeakerEditableSegmentID] {
-        turn.segments.map(\.id)
+        turn.logicalTurnSegments.map(\.id)
     }
 
     private var selectedSegmentCount: Int {
@@ -501,7 +503,10 @@ private struct EditableTranscriptTurnCardView<SpeakerLabelContent: View>: View {
             VStack(alignment: .leading, spacing: DesignSystem.Spacing.sm) {
                 ForEach(turn.segments) { segment in
                     ZStack(alignment: .topLeading) {
-                        effectiveTimestampScrollAnchor(id: segment.id)
+                        // The card owns its first segment's scroll identity.
+                        if segment.id != turn.id {
+                            effectiveTimestampScrollAnchor(id: segment.id)
+                        }
                         TranscriptSegmentRow(
                             startMs: segment.startMs,
                             text: segment.text,
@@ -574,18 +579,18 @@ private struct EditableTranscriptTurnCardView<SpeakerLabelContent: View>: View {
         Menu("Assign this turn to…") {
             ForEach(availableSpeakers.filter { $0.id != speakerID }, id: \.id) { speaker in
                 Button(speaker.label) {
-                    onAssignTurn(turn.segments, .speaker(id: speaker.id))
+                    onAssignTurn(turn.logicalTurnSegments, .speaker(id: speaker.id))
                 }
             }
             if speakerID != nil {
                 Divider()
                 Button("Unassigned") {
-                    onAssignTurn(turn.segments, .unassigned)
+                    onAssignTurn(turn.logicalTurnSegments, .unassigned)
                 }
             }
         }
         Button("New speaker…") {
-            onCreateSpeakerForTurn(turn.segments)
+            onCreateSpeakerForTurn(turn.logicalTurnSegments)
         }
     }
 

@@ -100,6 +100,7 @@ public final class PromptsViewModel {
     }
     public var editingCollectionID: UUID?
     public var editingTargetLabelIDs: Set<UUID> = []
+    private var originalEditingTargetLabelIDs: Set<UUID> = []
     public private(set) var newInferenceValidationErrors: InferenceValidationErrors = [:]
     public private(set) var editingInferenceValidationErrors: InferenceValidationErrors = [:]
     public var errorMessage: String?
@@ -238,17 +239,22 @@ public final class PromptsViewModel {
             errorMessage = error.localizedDescription
             return
         }
+        let ownsEditingState = editingPrompt?.id == prompt.id
         let inferenceDraft =
-            editingPrompt?.id == prompt.id
+            ownsEditingState
             ? editingInferenceSettings
             : InferenceSettingsDraft(settings: prompt.inferenceSettings)
         let inferenceSettings: PromptInferenceSettings?
         switch Self.validateInferenceSettings(inferenceDraft) {
         case .valid(let settings):
             inferenceSettings = settings
-            editingInferenceValidationErrors = [:]
+            if ownsEditingState { editingInferenceValidationErrors = [:] }
         case .invalid(let errors):
-            editingInferenceValidationErrors = errors
+            if ownsEditingState {
+                editingInferenceValidationErrors = errors
+            } else {
+                errorMessage = "Open this prompt to correct its inference settings before saving changes."
+            }
             return
         }
 
@@ -269,7 +275,12 @@ public final class PromptsViewModel {
 
         do {
             try repo.save(updated)
-            if updated.category == .result {
+            // The picker is a simplified projection: migrated policies may
+            // contain denials or no fallback. Preserve those exact rules
+            // unless this editor actually changes the target selection.
+            if updated.category == .result, editingPrompt?.id == prompt.id,
+                editingTargetLabelIDs != originalEditingTargetLabelIDs
+            {
                 try labelPolicyRepository?.replaceTargetLabels(
                     promptId: updated.id,
                     labelIds: editingTargetLabelIDs
@@ -297,6 +308,7 @@ public final class PromptsViewModel {
         editingModelOverride = prompt.modelOverride ?? ""
         editingCollectionID = prompt.collectionId
         editingTargetLabelIDs = labelIDsByPromptID[prompt.id] ?? []
+        originalEditingTargetLabelIDs = editingTargetLabelIDs
         editingInferenceValidationErrors = [:]
         editingPrompt = prompt
         loadVersions(for: prompt.id)

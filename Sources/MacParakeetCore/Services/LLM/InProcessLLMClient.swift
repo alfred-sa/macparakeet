@@ -45,6 +45,11 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         runtime.isAvailable
     }
 
+    /// Internal observation for deterministic queue-lifecycle verification.
+    var queuedGenerationCount: Int {
+        get async { await lifetimeCoordinator.queuedGenerationCount }
+    }
+
     public func chatCompletion(
         messages: [ChatMessage],
         context: LLMExecutionContext,
@@ -58,7 +63,8 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
         )
         return ChatCompletionResponse(
             content: generation.content,
-            finishReason: "stop",
+            // The runtime does not distinguish EOS from a token limit.
+            finishReason: nil,
             model: context.providerConfig.modelName,
             generationMetrics: generation.metrics,
             effectiveInferenceSettings: options.effectiveInferenceSettings
@@ -108,7 +114,7 @@ public final class InProcessLLMClient: LLMClientProtocol, Sendable {
                     continuation.yield(.completed(LLMStreamTerminal(
                         provider: context.providerConfig.id.rawValue,
                         model: context.providerConfig.modelName,
-                        stopReason: "stop",
+                        stopReason: nil,
                         effectiveSettings: options.effectiveInferenceSettings
                     )))
                     continuation.finish()
@@ -583,6 +589,8 @@ private actor LocalLLMLifetimeCoordinator {
     private var unloadInProgress = false
     private var activeGenerationID: UUID?
     private var waitingGenerations: [WaitingGeneration] = []
+
+    var queuedGenerationCount: Int { waitingGenerations.count }
 
     func beginGeneration() async throws -> LocalLLMGenerationLease {
         try Task.checkCancellation()
